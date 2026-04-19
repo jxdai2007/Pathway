@@ -42,5 +42,60 @@
     "sample_downstream": ["AAP Academic Counseling (free drop-in, rolling)", "Email an AI lab PI for a 15-min tour", "Attend ACM AI or ACM Cyber first meeting"],
     "applies_to_majors": ["stem", "humanities", "social_science", "undeclared"],
     "applies_to_modes": ["discovery"]
+  },
+  {
+    "id": "seed-hum-policy-journalism",
+    "path_tag": "policy-journalism",
+    "eyebrow": "Direction",
+    "title": "Policy Journalism",
+    "description": "Long-form research and reporting about civic life, government, and institutions. Strong pipeline into think tanks, legal fellowships, and investigative newsrooms.",
+    "why_this_hint": "If your writing already reads like civic research — think URFP papers, Daily Bruin features — formalize it with a Public Affairs or Digital Humanities minor and a Bruin news-desk pitch.",
+    "sample_downstream": ["Pitch Daily Bruin News desk (rolling)", "Apply Luskin Public Affairs minor", "Summer Dow Jones News Fund fellowship (apply fall)"],
+    "applies_to_majors": ["humanities", "social_science"],
+    "applies_to_modes": ["discovery", "partial", "directed"]
+  },
+  {
+    "id": "seed-hum-product-writing",
+    "path_tag": "product-writing",
+    "eyebrow": "Direction",
+    "title": "Product & UX Writing",
+    "description": "Narrative design for digital products — microcopy, content strategy, onboarding flows. High demand, low competition from humanities grads.",
+    "why_this_hint": "Editorial judgment + a little Figma is already 80% of a UX writing portfolio. Start with Creative Labs or Bruin Consulting; ship two case studies.",
+    "sample_downstream": ["Join Creative Labs (apply fall)", "Bruin Consulting — client work (apply fall)", "Ship 2 UX writing case studies on personal site"],
+    "applies_to_majors": ["humanities", "social_science"],
+    "applies_to_modes": ["discovery", "partial", "directed"]
+  },
+  {
+    "id": "seed-hum-research-grad",
+    "path_tag": "humanities-research",
+    "eyebrow": "Direction",
+    "title": "Humanities Research → Grad School",
+    "description": "Academic path: seminars, URFP, conference papers, faculty relationships, PhD pipeline. Slow burn, high ceiling.",
+    "why_this_hint": "If you love archives and long arguments, URFP + a close advisor relationship is the unlock. Start by emailing a professor whose work you already quote.",
+    "sample_downstream": ["Email a faculty advisor for office hours", "Apply URFP (fall deadline)", "Target one UCLA research symposium submission"],
+    "applies_to_majors": ["humanities", "social_science"],
+    "applies_to_modes": ["directed", "partial"]
+  },
+  {
+    "id": "seed-soc-datapolicy",
+    "path_tag": "data-policy",
+    "eyebrow": "Direction",
+    "title": "Data for Public Policy",
+    "description": "Quantitative methods applied to social problems — housing, health, education. Bridges social science with data skills. Strong fit for Urban Planning / Public Policy grad school.",
+    "why_this_hint": "A social science background + Python/R + one public-sector project is rarer than you'd think. UCLA Luskin and DataRes both have undergrad tracks.",
+    "sample_downstream": ["Join DataRes (rolling applications)", "Take Stats 10 + Stats 101A sequence", "Apply Luskin summer research stipend"],
+    "applies_to_majors": ["social_science", "humanities"],
+    "applies_to_modes": ["directed", "partial", "discovery"]
+  },
+  {
+    "id": "seed-undeclared-pivot",
+    "path_tag": "pivot-bridge",
+    "eyebrow": "Direction",
+    "title": "Bridge a Pivot",
+    "description": "For students mid-pivot: stay in current major, build a portable skill bridge (data, design, writing, research) that makes the next move cheap.",
+    "why_this_hint": "Pivots don't require switching majors. Build two portable artifacts this year that work in either direction — then decide with data.",
+    "sample_downstream": ["Pick 1 skill to bridge (data / design / writing)", "Ship 1 small artifact this quarter", "Office hours with advisor to map credit overlap"],
+    "applies_to_majors": ["humanities", "social_science", "undeclared", "stem"],
+    "applies_to_modes": ["partial", "discovery"]
   }
 ]
