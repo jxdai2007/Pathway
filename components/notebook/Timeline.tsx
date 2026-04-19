@@ -1,11 +1,12 @@
 'use client';
-import { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { usePathwayStore } from '@/store/pathway';
 import { STAGES, resolveStage1Options, buildPathTrace } from '@/lib/notebook-engine';
 import seedsJson from '@/data/ucla/first_layer_seeds.json';
 import type { IntakeProfile, FirstLayerSeed, Node } from '@/lib/schemas';
 import { TimelineRow } from './TimelineRow';
 import { RootNode } from './RootNode';
+import { Marginalia } from './Marginalia';
 
 export function Timeline({ profile }: { profile: IntakeProfile }) {
   const seeds = seedsJson as FirstLayerSeed[];
@@ -79,16 +80,30 @@ export function Timeline({ profile }: { profile: IntakeProfile }) {
             : Object.values(store.nodesById).filter((n) => n.parent_id === store.lockedNodeIds[stageIdx-1] && n.stage_key === STAGES[stageIdx].key))
         : null;
       const loading = isOpen && (options?.length ?? 0) < 3 && stageIdx in store.inFlight;
+
+      // Marginalia: at most one per row, at most 3 total on screen
+      let marginalia: React.ReactNode = null;
+      const isFirstPromptVisible = store.openPromptStageIdx === 0 && store.lockedNodeIds.length === 0;
+      if (stageIdx === 0 && isFirstPromptVisible) {
+        marginalia = <Marginalia text="← start here" rot={-4} top={8} />;
+      } else if (stageIdx === 2 && !locked) {
+        marginalia = <Marginalia text="ask advisor" rot={-3} top={4} />;
+      } else if (store.openPromptStageIdx === stageIdx && stageIdx > 0) {
+        marginalia = <Marginalia text="← next move" rot={-5} top={12} />;
+      }
+
       return (
-        <TimelineRow
-          key={stageIdx}
-          stageIdx={stageIdx}
-          profile={profile}
-          locked={locked}
-          isOpen={isOpen}
-          options={options}
-          loading={loading}
-        />
+        <div key={stageIdx} style={{ position: 'relative' }}>
+          {marginalia}
+          <TimelineRow
+            stageIdx={stageIdx}
+            profile={profile}
+            locked={locked}
+            isOpen={isOpen}
+            options={options}
+            loading={loading}
+          />
+        </div>
       );
     });
   }, [store.nodesById, store.lockedNodeIds, store.openPromptStageIdx, store.inFlight, profile]);
