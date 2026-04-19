@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { STAGE_KEYS } from '@/lib/stages';
 
 // Controlled vocabularies
 export const TypeEnum = z.enum(['fellowship', 'research', 'club', 'program', 'advising', 'course', 'internship']);
@@ -14,6 +15,14 @@ export const ContactSchema = z.object({
   email_or_office: z.string(),
   url: z.string().url().optional(),
 });
+
+export const CiteSchema = z.object({
+  label:   z.string().min(1).max(80),
+  summary: z.string().min(1).max(200),
+  url:     z.string().url(),
+});
+
+export const StageKeyEnum = z.enum(STAGE_KEYS as unknown as [string, ...string[]]);
 
 // Corpus item (single source of truth — forkers replicate for other schools)
 export const CorpusItemSchema = z.object({
@@ -75,6 +84,10 @@ export const NodeSchema = z.object({
   }).nullable(),
   estimated_time_cost: z.string(),
   leads_to_tags: z.array(z.string()),
+  stage_key: StageKeyEnum,
+  eyebrow:   z.string().max(40),
+  path_tag:  z.string().regex(/^[a-z0-9_-]{2,24}$/),
+  cites:     z.array(CiteSchema).max(3),
 });
 
 // Path trace for server: compact summary of accumulated choices
@@ -90,6 +103,8 @@ export const ExpandRequestSchema = z.object({
   parent_id: z.string().nullable(),
   path_trace: z.array(PathTraceItemSchema),
   requestId: z.string().min(1),
+  stage_key:       StageKeyEnum,
+  parent_path_tag: z.string().nullable(),
 });
 
 // API response: discriminated union
@@ -117,3 +132,5 @@ export type Node = z.infer<typeof NodeSchema>;
 export type ExpandRequest = z.infer<typeof ExpandRequestSchema>;
 export type ExpandResponse = z.infer<typeof ExpandResponseSchema>;
 export type PathTraceItem = z.infer<typeof PathTraceItemSchema>;
+export type Cite = z.infer<typeof CiteSchema>;
+export type StageKeyType = z.infer<typeof StageKeyEnum>;

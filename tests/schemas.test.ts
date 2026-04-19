@@ -67,3 +67,94 @@ describe('ExpandResponseSchema discriminated union', () => {
     expect(() => ExpandResponseSchema.parse(invalid)).toThrow();
   });
 });
+
+import { CiteSchema, NodeSchema, ExpandRequestSchema, StageKeyEnum } from '@/lib/schemas';
+
+describe('CiteSchema', () => {
+  const valid = { label: 'UCLA CS', summary: 'major info', url: 'https://cs.ucla.edu' };
+  it('accepts a valid cite', () => {
+    expect(CiteSchema.safeParse(valid).success).toBe(true);
+  });
+  it('rejects a non-URL', () => {
+    expect(CiteSchema.safeParse({ ...valid, url: 'not-a-url' }).success).toBe(false);
+  });
+  it('rejects empty label', () => {
+    expect(CiteSchema.safeParse({ ...valid, label: '' }).success).toBe(false);
+  });
+});
+
+describe('StageKeyEnum', () => {
+  it('accepts every documented stage key', () => {
+    ['direction', 'community', 'signal', 'summer', 'capstone'].forEach((k) => {
+      expect(StageKeyEnum.safeParse(k).success).toBe(true);
+    });
+  });
+  it('rejects unknown', () => {
+    expect(StageKeyEnum.safeParse('foo').success).toBe(false);
+  });
+});
+
+describe('NodeSchema additions', () => {
+  const baseNode = {
+    id: 'n1',
+    parent_id: null,
+    opportunity_id: null,
+    title: 'Declare CS',
+    description: 'pick a major',
+    why_this: 'aligned with interests',
+    why_now: 'deadline soon',
+    todos: [{ text: 'email advisor', done: false }],
+    source_url: null,
+    human_contact: null,
+    outreach_email_draft: null,
+    estimated_time_cost: '2 hrs',
+    leads_to_tags: [],
+    stage_key: 'direction',
+    eyebrow: 'Direction',
+    path_tag: 'ai',
+    cites: [{ label: 'UCLA CS', summary: 'info', url: 'https://cs.ucla.edu' }],
+  };
+  it('accepts a fully-formed node', () => {
+    expect(NodeSchema.safeParse(baseNode).success).toBe(true);
+  });
+  it('rejects invalid path_tag (uppercase)', () => {
+    expect(NodeSchema.safeParse({ ...baseNode, path_tag: 'AI' }).success).toBe(false);
+  });
+  it('rejects path_tag too short (1 char)', () => {
+    expect(NodeSchema.safeParse({ ...baseNode, path_tag: 'a' }).success).toBe(false);
+  });
+  it('rejects > 3 cites', () => {
+    const c = { label: 'x', summary: 'y', url: 'https://a.b' };
+    expect(NodeSchema.safeParse({ ...baseNode, cites: [c, c, c, c] }).success).toBe(false);
+  });
+  it('accepts 0 cites', () => {
+    expect(NodeSchema.safeParse({ ...baseNode, cites: [] }).success).toBe(true);
+  });
+});
+
+describe('ExpandRequestSchema additions', () => {
+  const baseReq = {
+    profile: {
+      year: 'freshman', major_category: 'stem', first_gen: true,
+      aid_status: 'pell', hours_per_week: 8, interests: ['ai_ml'], mode: 'discovery',
+    },
+    parent_id: null,
+    path_trace: [],
+    requestId: 'req-1',
+    stage_key: 'direction',
+    parent_path_tag: null,
+  };
+  it('accepts a valid request', () => {
+    expect(ExpandRequestSchema.safeParse(baseReq).success).toBe(true);
+  });
+  it('rejects missing stage_key', () => {
+    const { stage_key, ...rest } = baseReq;
+    expect(ExpandRequestSchema.safeParse(rest).success).toBe(false);
+  });
+  it('accepts parent_path_tag = null', () => {
+    expect(ExpandRequestSchema.safeParse({ ...baseReq, parent_path_tag: null }).success).toBe(true);
+  });
+  it('accepts parent_path_tag = string', () => {
+    expect(ExpandRequestSchema.safeParse({ ...baseReq, parent_path_tag: 'ai' }).success).toBe(true);
+  });
+});
