@@ -1,6 +1,7 @@
 'use client';
 import type { Node } from '@/lib/schemas';
 import { synthesizeTodos, seedFor, rotationFor } from '@/lib/notebook-engine';
+import { STAGES } from '@/lib/stages';
 import { usePathwayStore } from '@/store/pathway';
 import { RoughRect } from './rough/RoughRect';
 import { FreehandCheck } from './rough/FreehandCheck';
@@ -37,6 +38,7 @@ export function LockedNode({ node, stageIdx }: { node: Node; stageIdx: number })
           type="button"
           onClick={() => reopen(stageIdx)}
           className="block w-full text-left"
+          aria-label={`reopen ${STAGES[stageIdx].stage}`}
         >
           <div className={styles.nodeEyebrow}>{node.eyebrow}</div>
           <div className={styles.nodeTitle}>{node.title}</div>

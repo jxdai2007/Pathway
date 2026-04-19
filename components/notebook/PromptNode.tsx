@@ -17,6 +17,8 @@ export function PromptNode({ stageIdx, prompt }: { stageIdx: number; prompt: str
       onClick={() => setIdx({ openPromptStageIdx: stageIdx })}
       className={styles.prompt}
       style={{ '--rot': `${rot}deg` } as React.CSSProperties}
+      aria-expanded={false}
+      aria-label={`open stage ${stageIdx + 1} choices`}
     >
       {size.w > 0 && (
         <RoughRect

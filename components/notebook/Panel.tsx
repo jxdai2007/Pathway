@@ -9,7 +9,7 @@ import { useMeasure } from '@/hooks/useMeasure';
 import { PanelEmpty } from './PanelEmpty';
 import styles from './notebook.module.css';
 
-function LockButton({ stageIdx, onClick }: { stageIdx: number; onClick: () => void }) {
+function LockButton({ stageIdx, nodeTitle, onClick }: { stageIdx: number; nodeTitle: string; onClick: () => void }) {
   const { ref, size } = useMeasure<HTMLButtonElement>();
   return (
     <button
@@ -18,6 +18,7 @@ function LockButton({ stageIdx, onClick }: { stageIdx: number; onClick: () => vo
       onClick={onClick}
       className={`${styles.btn} ${styles.btnPrimary}`}
       style={{ '--rot': `${rotationFor('btn-lock-' + stageIdx)}deg` } as React.CSSProperties}
+      aria-label={`lock in ${nodeTitle}`}
     >
       {size.w > 0 && (
         <RoughRect width={size.w} height={size.h} seed={seedFor('btn-lock-' + stageIdx)} stroke="#c94c3a" />
@@ -36,6 +37,7 @@ function DismissButton({ stageIdx, onClick }: { stageIdx: number; onClick: () =>
       onClick={onClick}
       className={`${styles.btn} ${styles.btnGhost}`}
       style={{ '--rot': `${rotationFor('btn-dismiss-' + stageIdx)}deg` } as React.CSSProperties}
+      aria-label="dismiss preview"
     >
       {size.w > 0 && (
         <RoughRect width={size.w} height={size.h} seed={seedFor('btn-dismiss-' + stageIdx)} stroke="#6b6658" />
@@ -124,7 +126,7 @@ export function Panel() {
         </div>
       )}
       <div className={styles.panelActions}>
-        <LockButton stageIdx={stageIdx} onClick={() => lockIn(stageIdx, node.id)} />
+        <LockButton stageIdx={stageIdx} nodeTitle={node.title} onClick={() => lockIn(stageIdx, node.id)} />
         <DismissButton stageIdx={stageIdx} onClick={cancel} />
       </div>
     </div>

@@ -1296,6 +1296,18 @@
 }
 
 /* ----------------------------------------------------------------
+   Focus-visible ring (keyboard nav / ARIA)
+   ---------------------------------------------------------------- */
+.prompt:focus-visible,
+.choice:focus-visible,
+.nodeLocked:focus-visible,
+.btn:focus-visible,
+.choicesClose:focus-visible {
+  outline: 2px solid #c94c3a;
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------------
    Reduced-motion branch
    ---------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {

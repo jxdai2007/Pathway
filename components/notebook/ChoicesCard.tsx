@@ -23,6 +23,11 @@ export function ChoicesCard({ stageIdx, options, loading }: Props) {
       ref={ref}
       className={styles.choices}
       style={{ '--rot': `${rot}deg` } as React.CSSProperties}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setState({ openPromptStageIdx: null, previewNodeId: null });
+        }
+      }}
     >
       {size.w > 0 && (
         <RoughRect
@@ -38,6 +43,7 @@ export function ChoicesCard({ stageIdx, options, loading }: Props) {
             type="button"
             onClick={() => setState({ openPromptStageIdx: null, previewNodeId: null })}
             className={styles.choicesClose}
+            aria-label="close choices"
           >×</button>
         </div>
         {loading && !options?.length ? (
