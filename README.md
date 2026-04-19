@@ -8,7 +8,7 @@
 git clone <this-repo>
 cd claudehackathon
 cp .env.example .env.local
-# Edit .env.local and paste your ANTHROPIC_API_KEY from console.anthropic.com
+# Edit .env.local: paste your ANTHROPIC_API_KEY from console.anthropic.com
 npm install
 npm run dev
 # Open http://localhost:3000
@@ -22,32 +22,60 @@ College has hundreds of fellowships, clubs, research groups, and advising office
 
 ## Solution
 
-Branching AI-generated roadmap. Enter your profile + goal (or "help me discover"). Claude proposes 3-4 path directions grounded in a curated UCLA opportunity corpus. Click a direction, Claude generates the next layer of nodes. Each node carries concrete todos, source URL, a real human contact, and a drafted outreach email.
+Branching AI-generated roadmap. Answer a 9-step intake. Claude proposes 3-4 path directions grounded in a curated UCLA opportunity corpus. Click a direction, Claude generates the next layer of nodes. Each node carries concrete todos, source URL, a real human contact, and a drafted outreach email.
 
 ## How Claude Is Used
 
-- At every click, Claude reasons over the student's accumulated path choices, profile, goal, and filtered corpus to propose 2-3 next-best forks.
-- Structured JSON output via `@anthropic-ai/sdk` with prompt caching on the stable system prompt.
-- Server-side semantic validation rejects any node whose `opportunity_id` isn't in the corpus — no hallucinated fellowships.
-- Claude is not a wrapper; it does path-dependent reasoning + warm outreach drafting — things a keyword filter cannot do.
+- **Path-dependent generation.** Each `/api/expand-node` call receives the accumulated path trace. Claude conditions the next layer on where the student has been, not on a static recommendation.
+- **Prompt caching on the system prompt.** The advisor guardrails are cached via Anthropic's ephemeral cache, so each expansion pays Claude only for the novel profile + path context.
+- **Server-side semantic validation.** Every returned `opportunity_id` is checked against the in-repo corpus. Hallucinations (invented ids, mismatched URLs) are dropped silently and the route falls back to a deterministic advising pool. The student never sees a fake opportunity.
+- **Prompt injection guard.** The student's goal string is wrapped in `<student_goal_untrusted>...</student_goal_untrusted>` and the system prompt tells Claude to ignore instructions inside.
+- **Abort + stale rejection.** Each node's expand call gets an `AbortController`. Rapid clicks on the same parent cancel prior in-flight calls; stale responses are rejected by requestId.
 
 ## Ethics & What Could Go Wrong
 
-- **Misdirection:** hard eligibility filter runs before Claude; every node cites a source URL.
-- **Hallucination:** schema validator drops any child naming an opportunity not in corpus; deterministic advising-pool fills gaps.
-- **Privacy:** sensitive profile fields (first-gen status, aid status) live in browser memory only. Never persisted, never logged.
-- **Prompt injection:** open-ended `end_goal` input is wrapped in untrusted-input tags with explicit model instruction to ignore instructions within.
-- **Replacing advisors:** every node points to a real human advisor (EOP, AAP, department). Top-level disclaimer that Pathway augments, does not replace, a real advisor.
+- **No persistence of sensitive fields.** `first_gen`, `aid_status`, `end_goal` live in an in-memory Zustand store. They never hit localStorage. Tree structure does persist (so refresh keeps your walk) but sensitive profile fields do not.
+- **Every leaf hands off to a human.** Side panel always surfaces a real UCLA contact (advisor, program coordinator). Pathway is a triage tool, not an advisor.
+- **Epistemic humility.** The UI exposes Claude's stated uncertainty ("What I might be wrong about") and prompts the student to book a real advisor for high-stakes decisions.
+- **Fallback safety route.** If the tree UI breaks, `/fallback` gives a linear 3-moves view with source URLs.
+- **Risks we acknowledge.** Claude can still over-confident. The corpus is UCLA-only — other schools need forks. The advisor-handoff depends on students actually using the email drafts. None of this replaces real mentorship.
 
 ## Demo Personas
 
-- **Maya Chen** (discovery mode): freshman, CS undecided, first-gen, Pell, 8 hrs/wk. Doesn't know if she wants AI/ML or cybersec.
-- **Raj Patel** (directed mode): sophomore CS, goal "PhD AI/ML", wants milestone roadmap.
+- **Maya Chen** — first-gen freshman, CS, Pell grant, 8 hrs/week, *discovery* mode. Wants to see both AI/ML and cybersec paths.
+- **Raj Patel** — sophomore, CS, no aid, 15 hrs/week, *directed* mode. Knows he wants a PhD in AI/ML.
 
-## Fork Guide (target another school)
+Use the "Use demo · Maya" button in the welcome slide, or switch at any time via the persona tab strip at the bottom of the tree screen.
 
-Create `data/<school>/opportunities.json` + `data/<school>/first_layer_seeds.json` following the schemas in `lib/schemas.ts`. No code changes required.
+## Fork Guide
+
+Other schools can fork Pathway by replacing `data/ucla/` with `data/<school>/`:
+- `opportunities.json` — 15-20 curated items + 3-5 advising fallback.
+- `first_layer_seeds.json` — 4 seeds (3 per major_category, 1 discovery).
+- `personas.json` — 2+ demo personas.
+
+Every record must match `CorpusItemSchema` / `FirstLayerSeedSchema` in `lib/schemas.ts`. The predev validator (`npm run dev`) fails loudly on malformed data.
+
+## Architecture
+
+- **Next.js 16 App Router** — static routes + one server route at `/api/expand-node`.
+- **Tailwind v4** — CSS-first `@theme` tokens in `app/globals.css`.
+- **Zustand** — two stores: `profile` (in-memory only) + `pathway` (nodes + selection, localStorage-persisted).
+- **Zod** — all API + data contracts in `lib/schemas.ts`.
+- **Anthropic SDK** — `claude-sonnet-4-6` pinned, 10s timeout, abortable.
+- **Custom SVG tree canvas** — hand-laid layout in `lib/tree-layout.ts`, cubic-bezier edges with a hand-drawn roughen filter.
+
+## Tree Structure, Explained
+
+- Root → 3 first-layer seeds (by major category + mode).
+- Click a seed → focus shifts. Unchosen seeds render as "Alternative futures" in the right rail.
+- Click a node → Claude generates 2-3 children grounded in the curated corpus.
+- Each node: deadline pill (urgent / soon / normal), todos, outreach email draft, source URL, human contact.
 
 ## Contributors
 
-SoCal Claude Builder Club Hackathon · UCLA · April 2026
+Built for the Claude hackathon, April 2026.
+
+## License
+
+MIT

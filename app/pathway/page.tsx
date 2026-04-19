@@ -8,6 +8,7 @@ import { NodePanel } from '@/components/tree/NodePanel';
 import { ProgressBar } from '@/components/tree/ProgressBar';
 import { EpistemicHumilityBlock } from '@/components/tree/EpistemicHumilityBlock';
 import { GhostRail } from '@/components/tree/GhostRail';
+import { PersonaTabStrip } from '@/components/tree/PersonaTabStrip';
 
 function PathwayContent() {
   const profile = useProfileStore((s) => s.profile);
@@ -30,6 +31,7 @@ function PathwayContent() {
       {ghostsEnabled && <GhostRail />}
       <NodePanel />
       <EpistemicHumilityBlock />
+      <PersonaTabStrip />
     </>
   );
 }
