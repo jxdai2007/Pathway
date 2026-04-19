@@ -35,7 +35,8 @@ export const CorpusItemSchema = z.object({
 // First-layer seeds (hardcoded per major category; NOT Claude-generated)
 export const FirstLayerSeedSchema = z.object({
   id: z.string().min(1),
-  path_tag: z.string(),
+  path_tag: z.string().regex(/^[a-z0-9_-]{2,24}$/),
+  eyebrow: z.string().max(40),
   title: z.string(),
   description: z.string(),
   why_this_hint: z.string(),

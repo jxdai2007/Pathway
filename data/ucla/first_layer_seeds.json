@@ -1,7 +1,8 @@
 [
   {
     "id": "seed-cs-ai-ml",
-    "path_tag": "cs:ai_ml",
+    "path_tag": "ai",
+    "eyebrow": "Direction",
     "title": "AI / ML Research",
     "description": "Research-oriented path into machine learning and AI. Heavy math, best runway to grad school, research labs, and cutting-edge industry roles.",
     "why_this_hint": "If you're drawn to how machines learn from data — or you want to go to grad school — this path starts with low-barrier clubs and builds toward paid summer research.",
@@ -11,7 +12,8 @@
   },
   {
     "id": "seed-cs-cybersec",
-    "path_tag": "cs:cybersec",
+    "path_tag": "cybersec",
+    "eyebrow": "Direction",
     "title": "Cybersecurity",
     "description": "Hands-on path in offensive and defensive security. CTF competitions, systems knowledge, and a strong pipeline to security internships and industry roles.",
     "why_this_hint": "If breaking and defending systems sounds more exciting than building them, start with ACM Cyber's weekly CTF sessions — no prior experience needed.",
@@ -21,7 +23,8 @@
   },
   {
     "id": "seed-cs-fullstack-industry",
-    "path_tag": "cs:fullstack",
+    "path_tag": "build",
+    "eyebrow": "Direction",
     "title": "Full-Stack + Industry",
     "description": "Build-first path focused on shipping products and landing software engineering internships. Lower research ceiling, faster job market entry.",
     "why_this_hint": "If you want to ship things people actually use — and get a SWE internship by junior year — this path runs from club projects straight into recruiting season.",
@@ -31,7 +34,8 @@
   },
   {
     "id": "seed-discovery-undecided",
-    "path_tag": "discovery:broad",
+    "path_tag": "explore",
+    "eyebrow": "Direction",
     "title": "I'm not sure yet — help me explore",
     "description": "Not sure which direction to go? Walk three futures in parallel: AI/ML research, cybersecurity, and full-stack product — see which one pulls you in.",
     "why_this_hint": "The best next move when you're undecided isn't picking one path — it's taking one low-cost step on each so the right one becomes obvious.",
