@@ -1426,7 +1426,7 @@
                 <svg class="node__self-arrow" id="root-arrow" viewBox="0 0 60 70"></svg>
                 <div class="node__inner">
                   <div class="node__title-main" data-root-underline>YOU ARE HERE</div>
-                  <div class="node__sub">Maya · Freshman · First-gen · CS/AI curious</div>
+                  <div class="node__sub" id="root-sub">Maya · Freshman · First-gen · CS/AI curious</div>
                 </div>
               </div>
             </div>
@@ -1444,6 +1444,70 @@
     </div>
 
 <script>
+// ============================================================
+// ONBOARDING BRIDGE — reads localStorage profile from onboarding.html
+// ============================================================
+function readOnboardingProfile() {
+  try {
+    const raw = localStorage.getItem('pathway.onboarding.v3');
+    if (!raw) throw new Error('missing');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') throw new Error('invalid');
+    return parsed;
+  } catch (_) {
+    return { name: 'Maya', year: 'Freshman', majorStatus: 'Declared · CS', interests: ['AI / ML'], background: ['First-gen'], hoursPerWeek: 8, why: '' };
+  }
+}
+
+function composeIntakeProfile(answers) {
+  return {
+    year: { 'Freshman': 'freshman', 'Sophomore': 'sophomore', 'Junior': 'junior', 'Senior': 'senior', 'Grad': 'grad' }[answers.year],
+    major_category: { 'Declared · CS': 'stem', 'Declared · other STEM': 'stem', 'Declared · non-STEM': 'humanities', 'Undeclared': 'undeclared', 'Exploring': 'undeclared' }[answers.majorStatus] ?? 'undeclared',
+    first_gen: (answers.background || []).includes('First-gen'),
+    aid_status: 'none',
+    hours_per_week: Number(answers.hoursPerWeek ?? 8),
+    interests: (answers.interests || []).slice(0, 3),
+    mode: (answers.majorStatus === 'Undeclared' || answers.majorStatus === 'Exploring') ? 'discovery' : ((answers.why || '').trim() ? 'directed' : 'partial'),
+    end_goal: (answers.why || '').trim().slice(0, 300) || undefined,
+  };
+}
+
+async function fetchOptionsForStage(stageIdx, parentPathTag, pathTrace) {
+  const stage_keys = ['direction', 'community', 'signal', 'summer', 'capstone'];
+  const profile = composeIntakeProfile(readOnboardingProfile());
+  const reqBody = {
+    profile,
+    stage_key: stage_keys[stageIdx],
+    parent_path_tag: parentPathTag ?? null,
+    parent_id: pathTrace?.[pathTrace.length - 1]?.id ?? null,
+    path_trace: pathTrace || [],
+    requestId: 'pw-' + Date.now(),
+  };
+  try {
+    const r = await fetch('/api/expand-node', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(reqBody),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error('api not ok');
+    return j.children.map((n, i) => ({
+      id: n.id,
+      pathTag: n.path_tag,
+      title: n.title,
+      eyebrow: n.eyebrow,
+      when: n.why_now || '',
+      effort: n.estimated_time_cost,
+      deadline: (n.todos?.[0]?.text) || 'Rolling',
+      why: n.why_this,
+      body: n.description,
+      cites: (n.cites || []).map((c, idx) => [String(idx + 1), c.label, `<a href="${c.url}" target="_blank" rel="noopener noreferrer">${new URL(c.url).host}</a> — ${c.summary}`]),
+    }));
+  } catch (e) {
+    console.warn('[pathway] api failed, falling back to static', e);
+    return null;
+  }
+}
+
 // ============================================================
 // REAL UCLA CONTENT, hand-curated
 // ============================================================
@@ -2221,7 +2285,9 @@ const state = {
   checked: {}, // stageIdx -> Set of todo indexes that are checked
   confirmed: false, // Phase 1 (build plan) -> Phase 2 (execute): todos enabled
   landed: {}, // stageIdx -> true once that stage's sticky has "landed" on its card
-  justLandedIdx: -1 // which stage just finished all todos (plays fly-to-card animation)
+  justLandedIdx: -1, // which stage just finished all todos (plays fly-to-card animation)
+  _aiOptions: {}, // stageIdx -> array of AI-fetched options (null = use static fallback)
+  _aiLoading: false // true while fetch is in-flight
 };
 
 const stagesEl = document.getElementById('stages');
@@ -2612,7 +2678,7 @@ function render() {
                  data-sticky-landed="${i}"
                  style="--note-rot:${noteRot}deg; --tape-rot:${tapeRot}deg;">
               <span class="sticky__txt">${stickyTitle}</span>
-              <span class="sticky__signed">— M ✓</span>
+              <span class="sticky__signed">— ${(readOnboardingProfile().name||'Y')[0].toUpperCase()} ✓</span>
               <span class="sticky__kicker sticky__kicker--done">done!</span>
             </div>` : ''}
         </div>
@@ -2623,8 +2689,12 @@ function render() {
   // Current open stage
   if (state.openPromptIdx >= 0 && state.openPromptIdx === nextStageIdx) {
     const stage = STAGES[state.openPromptIdx];
-    const opts = optionsForStage(state.openPromptIdx);
+    const aiOpts = state._aiOptions[state.openPromptIdx];
+    const opts = (aiOpts != null) ? aiOpts : optionsForStage(state.openPromptIdx);
     const r = rot(`choices-${state.openPromptIdx}`);
+    const loadingHtml = state._aiLoading && aiOpts == null
+      ? `<div class="choices__loading" style="padding:12px 0;opacity:0.6;font-style:italic;text-align:center;">thinking…</div>`
+      : '';
     stagesEl.insertAdjacentHTML('beforeend', `
       <div class="tl__stage-lbl">${stage.stage}</div>
       <div class="tl__row">
@@ -2640,6 +2710,7 @@ function render() {
                 <svg viewBox="0 0 22 22"></svg>
               </button>
             </div>
+            ${loadingHtml}
             ${opts.map((o, i) => {
               const isSel = state.selectedChoice && state.selectedChoice.option.id === o.id;
               return `
@@ -2988,7 +3059,7 @@ function renderBoard() {
                  style="--note-rot:${noteRot}deg; --tape-rot:${tapeRot}deg;">
               <span class="sticky__kicker">stage ${i+1}</span>
               <span class="sticky__txt">${lock.option.title}</span>
-              <span class="sticky__signed">— M ✓</span>
+              <span class="sticky__signed">— ${(readOnboardingProfile().name||'Y')[0].toUpperCase()} ✓</span>
             </div>
           </div>`);
       }
@@ -3183,10 +3254,14 @@ function renderPanel() {
     state.locked = state.locked.slice(0, stageIdx);
     state.locked.push({ stageIdx, option });
     state.selectedChoice = null;
+    // Invalidate AI options for the next stage (path changed)
+    const nextIdx = state.locked.length;
+    delete state._aiOptions[nextIdx];
     state.openPromptIdx = state.locked.length < STAGES.length ? state.locked.length : -1;
     state.justLockedIdx = stageIdx;
     render();
     renderPanel();
+    if (state.openPromptIdx >= 0) triggerAIFetch(state.openPromptIdx);
     // Clear the just-locked flag after the full drop+write animation finishes
     // (~1200ms). Do NOT re-render when clearing — the animation is on a
     // one-shot class; subsequent renders just won't add `--dropping` again.
@@ -3209,6 +3284,7 @@ function wireEvents() {
       state.selectedChoice = null;
       render();
       renderPanel();
+      triggerAIFetch(state.openPromptIdx);
     });
   });
   // Close open choices
@@ -3222,7 +3298,8 @@ function wireEvents() {
   // Pick a choice
   stagesEl.querySelectorAll('[data-choice-idx]').forEach(el => {
     el.addEventListener('click', () => {
-      const opts = optionsForStage(state.openPromptIdx);
+      const aiOpts = state._aiOptions[state.openPromptIdx];
+      const opts = (aiOpts != null) ? aiOpts : optionsForStage(state.openPromptIdx);
       const option = opts[parseInt(el.dataset.choiceIdx, 10)];
       state.selectedChoice = { stageIdx: state.openPromptIdx, option };
       render();
@@ -3313,6 +3390,8 @@ resetBtn.addEventListener('click', () => {
   state.landed = {};
   state.justLockedIdx = -1;
   state.justLandedIdx = -1;
+  state._aiOptions = {}; // clear AI cache on reset
+  state._aiLoading = false;
   state.rotations = {}; // re-randomize rotations on reset
   render();
   renderPanel();
@@ -3330,15 +3409,55 @@ window.addEventListener('resize', () => {
   }, 120);
 });
 
+// ============================================================
+// AI FETCH TRIGGER — fetches dynamic options for a stage, falls back to static
+// ============================================================
+function triggerAIFetch(stageIdx) {
+  if (stageIdx < 0 || stageIdx >= STAGES.length) return;
+  if (state._aiOptions[stageIdx] != null) return; // already fetched
+  const prevLock = stageIdx > 0 ? state.locked[stageIdx - 1] : null;
+  const parentPathTag = prevLock ? prevLock.option.pathTag : null;
+  const pathTrace = state.locked.map(l => ({ id: l.option.id, path_tag: l.option.pathTag }));
+  state._aiLoading = true;
+  render(); // show loading spinner
+  fetchOptionsForStage(stageIdx, parentPathTag, pathTrace).then(results => {
+    state._aiLoading = false;
+    if (results != null) {
+      state._aiOptions[stageIdx] = results;
+    }
+    render();
+    wireEvents();
+  });
+}
+
+// ============================================================
+// INIT — update dynamic sub-line, then render
+// ============================================================
+function initDynamicProfile() {
+  const answers = readOnboardingProfile();
+  const subEl = document.getElementById('root-sub');
+  if (subEl) {
+    const bgStr = (answers.background || []).includes('First-gen') ? 'First-gen · ' : '';
+    const intStr = (answers.interests || []).length
+      ? ' · ' + (answers.interests || []).slice(0, 2).join(' + ') + ' curious'
+      : ' curious';
+    subEl.textContent = `${answers.name || 'You'} · ${answers.year} · ${bgStr}${answers.majorStatus}${intStr}`;
+  }
+}
+
 // Initial render — needs fonts to load so offsetWidth is accurate
 if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(() => {
+    initDynamicProfile();
     render();
     renderPanel();
+    triggerAIFetch(state.openPromptIdx);
   });
 } else {
+  initDynamicProfile();
   render();
   renderPanel();
+  triggerAIFetch(state.openPromptIdx);
 }
 </script>
 
