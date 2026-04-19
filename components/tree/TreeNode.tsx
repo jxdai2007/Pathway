@@ -44,13 +44,13 @@ export function TreeNode({
       {node.tagline && node.depth > 0 && (
         <div className="text-meta text-ink-3 line-clamp-1">{node.tagline}</div>
       )}
-      {hasKids && node.depth > 0 && onExpand && (
+      {node.depth > 0 && !isExpanded && onExpand && (
         <button
           onClick={(e) => { e.stopPropagation(); onExpand(node); }}
-          className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-ucla-blue text-cream text-tiny flex items-center justify-center shadow-card"
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-ucla-blue text-cream text-body font-semibold flex items-center justify-center shadow-card hover:bg-ucla-darkblue"
+          aria-label="Expand with Claude"
         >
-          {isExpanded ? '−' : '+'}
+          +
         </button>
       )}
       {isComplete && (
