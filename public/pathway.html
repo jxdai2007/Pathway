@@ -2806,11 +2806,8 @@ const MARGINALIA = [
   { text: 'last one →', rot: -4, top: 14 },
 ];
 function renderMarginalia(idx, kind /* 'locked' | 'open' */) {
-  // Locked rows get a subtle small checkmark instead of call-to-action.
-  if (kind === 'locked') return '';
-  const m = MARGINALIA[Math.min(idx, MARGINALIA.length - 1)];
-  if (!m) return '';
-  return `<div class="marginalia marginalia--right" style="--rot: ${m.rot}deg; top: ${m.top}px; transform: rotate(${m.rot}deg);">${m.text}</div>`;
+  // Disabled per user request — remove small timeline/arrow pointer on left.
+  return '';
 }
 
 // Decorate with rough.js (structural) and perfect-freehand (red ink)
@@ -2827,12 +2824,9 @@ function decorate() {
     rootEl.style.position = 'relative';
     rootEl.appendChild(svg);
   }
-  // root arrow from YOU ARE HERE toward first stage label
+  // root arrow removed per user request (was the small timeline pointer)
   const rootArrow = document.getElementById('root-arrow');
-  if (rootArrow && !rootArrow.dataset.decorated) {
-    rootArrow.dataset.decorated = '1';
-    rootArrow.innerHTML = freehandArrow(50, 10, 18, 58, { curve: 0.35, seed: 33 });
-  }
+  if (rootArrow) { rootArrow.style.display = 'none'; }
   // Empty-panel arrow
   const emptyArrow = document.getElementById('empty-arrow');
   if (emptyArrow && !emptyArrow.dataset.decorated) {

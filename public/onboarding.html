@@ -465,6 +465,14 @@ const PAGES = [
             <input id="resume-upload" type="file" accept="application/pdf" style="display:none"/>
           </label>
           <div id="resume-status" style="margin-top:10px;font-family:'Kalam',cursive;font-size:14px;color:var(--ink-muted);font-style:italic"></div>
+          <div id="resume-outreach-offer" style="display:none;margin-top:14px;padding:14px;border:1.5px dashed var(--ink-navy);border-radius:6px;background:rgba(253,250,240,0.6)">
+            <div style="font-family:'Caveat',cursive;font-size:22px;color:var(--ink-navy);margin-bottom:6px">Want AI to pre-write your emails too?</div>
+            <div style="font-family:'Kalam',cursive;font-size:14px;color:var(--ink-muted);margin-bottom:10px">A research-intro email, a generic cover letter, and a cold-outreach email — adapted to your profile. Saved with your answers.</div>
+            <button id="resume-draft-btn" type="button" style="font-family:'Caveat',cursive;font-size:20px;color:var(--ink-red);border:1.5px solid var(--ink-red);background:transparent;border-radius:6px;padding:6px 14px;cursor:pointer">✍️ draft them for me</button>
+            <button id="resume-skip-btn" type="button" style="margin-left:10px;font-family:'Kalam',cursive;font-size:14px;color:var(--ink-muted);background:none;border:none;cursor:pointer;text-decoration:underline">skip</button>
+            <div id="resume-outreach-status" style="margin-top:10px;font-family:'Kalam',cursive;font-size:13px;color:var(--ink-muted);font-style:italic"></div>
+            <div id="resume-outreach-drafts" style="margin-top:14px;display:none;max-height:380px;overflow-y:auto"></div>
+          </div>
         </div>
       </div>`,
     wire: () => {
@@ -492,10 +500,42 @@ const PAGES = [
             why: (a.why || state.answers.why || '').slice(0,300),
           });
           saveAnswers(state.answers);
-          status.textContent = '✓ pre-filled — jumping to review';
-          setTimeout(() => goToPageById('review'), 600);
+          status.textContent = '✓ pre-filled. draft outreach next?';
+          const offer = document.getElementById('resume-outreach-offer');
+          if (offer) offer.style.display = 'block';
         } catch (e) {
           status.textContent = 'upload failed — try again';
+        }
+      });
+      const skipBtn = document.getElementById('resume-skip-btn');
+      if (skipBtn) skipBtn.addEventListener('click', () => goToPageById('review'));
+      const draftBtn = document.getElementById('resume-draft-btn');
+      if (draftBtn) draftBtn.addEventListener('click', async () => {
+        const box = document.getElementById('resume-outreach-status');
+        const out = document.getElementById('resume-outreach-drafts');
+        draftBtn.disabled = true; box.textContent = 'drafting (10-20s)…';
+        try {
+          const r = await fetch('/api/draft-outreach', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ profile: state.answers }),
+          });
+          const j = await r.json();
+          if (!j.ok) { box.textContent = 'could not draft — ' + (j.error||'').slice(0,80); draftBtn.disabled = false; return; }
+          try { localStorage.setItem('pathway.outreach.v1', JSON.stringify(j.drafts)); } catch(_) {}
+          box.textContent = '✓ drafts ready (saved). review onboarding?';
+          const d = j.drafts;
+          const esc = (s) => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+          out.style.display = 'block';
+          out.innerHTML = `
+            <div style="margin-bottom:12px"><div style="font-family:'Caveat',cursive;font-size:18px;color:var(--ink-red)">Research intro — subject</div><div style="font-family:'Kalam',cursive;font-size:14px;color:var(--ink-navy);margin-bottom:4px">${esc(d.research_intro_email?.subject)}</div><pre style="font-family:'Kalam',cursive;font-size:13px;white-space:pre-wrap;color:var(--ink-black);background:rgba(253,250,240,0.5);padding:8px;border-radius:4px">${esc(d.research_intro_email?.body)}</pre></div>
+            <div style="margin-bottom:12px"><div style="font-family:'Caveat',cursive;font-size:18px;color:var(--ink-red)">Cover letter</div><pre style="font-family:'Kalam',cursive;font-size:13px;white-space:pre-wrap;color:var(--ink-black);background:rgba(253,250,240,0.5);padding:8px;border-radius:4px">${esc(d.cover_letter?.body)}</pre></div>
+            <div><div style="font-family:'Caveat',cursive;font-size:18px;color:var(--ink-red)">Cold outreach — subject</div><div style="font-family:'Kalam',cursive;font-size:14px;color:var(--ink-navy);margin-bottom:4px">${esc(d.cold_outreach_email?.subject)}</div><pre style="font-family:'Kalam',cursive;font-size:13px;white-space:pre-wrap;color:var(--ink-black);background:rgba(253,250,240,0.5);padding:8px;border-radius:4px">${esc(d.cold_outreach_email?.body)}</pre></div>
+            <button id="resume-continue-btn" type="button" style="margin-top:12px;font-family:'Caveat',cursive;font-size:18px;color:var(--ink-navy);border:1.5px solid var(--ink-navy);background:transparent;border-radius:6px;padding:6px 14px;cursor:pointer">continue to review →</button>`;
+          const cont = document.getElementById('resume-continue-btn');
+          if (cont) cont.addEventListener('click', () => goToPageById('review'));
+        } catch (e) {
+          box.textContent = 'draft failed — try again';
+          draftBtn.disabled = false;
         }
       });
     },

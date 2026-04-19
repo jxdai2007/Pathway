@@ -1,9 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { IntakeProfile, PathTraceItem } from '@/lib/schemas';
+import type { IntakeProfile, IntakeProfileV2, PathTraceItem } from '@/lib/schemas';
 import type { StageKey } from '@/lib/stages';
+import { formatStudentContext } from '@/lib/student-context';
 
 type BuildArgs = {
-  profile: IntakeProfile;
+  profile: IntakeProfile | IntakeProfileV2;
   stage_key: StageKey;
   parent_path_tag: string | null;
   path_trace: PathTraceItem[];
@@ -44,6 +45,7 @@ export function buildSystemPrompt(a: BuildArgs): string {
     `  previous locks: ${trace}`,
     `  parent_path_tag: ${parentTag}`,
     `</stage>`,
+    formatStudentContext(a.profile as IntakeProfileV2),
     ``,
     STAGE_GUIDANCE[a.stage_key],
     ``,

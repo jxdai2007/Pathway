@@ -136,3 +136,72 @@ export type ExpandResponse = z.infer<typeof ExpandResponseSchema>;
 export type PathTraceItem = z.infer<typeof PathTraceItemSchema>;
 export type Cite = z.infer<typeof CiteSchema>;
 export type StageKeyType = z.infer<typeof StageKeyEnum>;
+
+// ─────────────────────────────────────────────────────────
+// Onboarding v2 additions — appended, fully additive
+// ─────────────────────────────────────────────────────────
+
+export const HorizonsSchema     = z.number().int().min(1).max(10);
+export const SatisfactionSchema = z.number().int().min(1).max(5);
+
+export const BlockerEnum = z.enum([
+  'too_many_options',
+  'dont_know_whats_out_there',
+  'none',
+]);
+
+export const CommunityTagEnum = z.enum([
+  'first_gen', 'transfer', 'veteran', 'international',
+  'lgbtq_plus', 'disability', 'religious', 'cultural_org',
+  'none', 'prefer_not_to_say',
+]);
+
+export const PivotSignalSchema = z.object({
+  triggered:    z.boolean(),
+  pivot_from:   z.string().max(120).optional(),
+  pivot_target: z.string().max(120).optional(),
+});
+
+export const TransferProfileSchema = z.object({
+  prior_school:    z.string().min(1).max(80),
+  terms_remaining: z.number().int().min(1).max(12),
+});
+
+export const ResumeExperienceSchema = z.object({
+  title:   z.string().max(120),
+  org:     z.string().max(120),
+  period:  z.string().max(40).optional(),
+  summary: z.string().max(400),
+  tags:    z.array(z.string().max(40)).max(10).default([]),
+});
+
+export const ResumeKBSchema = z.object({
+  headline:    z.string().max(200),
+  summary:     z.string().max(600),
+  experiences: z.array(ResumeExperienceSchema).max(20),
+  skills:      z.array(z.string().max(40)).max(30).default([]),
+  raw_excerpt: z.string().max(2000).optional(),
+});
+
+export const IntakeProfileV2Ext = z.object({
+  horizons:     HorizonsSchema.optional(),
+  satisfaction: SatisfactionSchema.optional(),
+  blocker:      BlockerEnum.optional(),
+  communities:  z.array(CommunityTagEnum).max(6).optional(),
+  pivot:        PivotSignalSchema.optional(),
+  transfer:     TransferProfileSchema.optional(),
+  is_transfer:  z.boolean().optional(),
+  resume_kb:    ResumeKBSchema.optional(),
+});
+
+export const IntakeProfileV2Schema = IntakeProfileSchema.merge(IntakeProfileV2Ext);
+
+export type Horizons         = z.infer<typeof HorizonsSchema>;
+export type Satisfaction     = z.infer<typeof SatisfactionSchema>;
+export type Blocker          = z.infer<typeof BlockerEnum>;
+export type CommunityTag     = z.infer<typeof CommunityTagEnum>;
+export type PivotSignal      = z.infer<typeof PivotSignalSchema>;
+export type TransferProfile  = z.infer<typeof TransferProfileSchema>;
+export type ResumeExperience = z.infer<typeof ResumeExperienceSchema>;
+export type ResumeKB         = z.infer<typeof ResumeKBSchema>;
+export type IntakeProfileV2  = z.infer<typeof IntakeProfileV2Schema>;
