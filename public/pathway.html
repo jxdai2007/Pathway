@@ -3200,6 +3200,14 @@ function renderPanel() {
             </div>`).join('')}
         </div>
       </div>
+      <div id="outreach-widget" data-node-id="${option.id || ''}" style="display:none;margin-top:16px;padding:12px 14px;border:1.5px dashed var(--ink-navy);border-radius:6px;background:rgba(253,250,240,0.5)">
+        <div style="font-family:'Caveat',cursive;font-size:20px;color:var(--ink-navy);margin-bottom:4px">This step needs outreach — want AI drafts?</div>
+        <div style="font-family:'Kalam',cursive;font-size:14px;color:var(--ink-muted);margin-bottom:10px" id="outreach-reason"></div>
+        <button data-outreach-kind="email" style="font-family:'Caveat',cursive;font-size:18px;color:var(--ink-red);border:1.5px solid var(--ink-red);background:transparent;border-radius:6px;padding:4px 12px;cursor:pointer">✉️ draft email</button>
+        <button data-outreach-kind="cover_letter" style="margin-left:6px;font-family:'Caveat',cursive;font-size:18px;color:var(--ink-red);border:1.5px solid var(--ink-red);background:transparent;border-radius:6px;padding:4px 12px;cursor:pointer">📄 draft cover letter</button>
+        <div id="outreach-status" style="margin-top:8px;font-family:'Kalam',cursive;font-size:13px;color:var(--ink-muted);font-style:italic"></div>
+        <div id="outreach-drafts" style="margin-top:10px;display:none"></div>
+      </div>
       ${isReopening && willWipeCount > 0 ? `
         <div class="reopen-warn">
           ⚠ Locking a different step here will unlock <strong>${willWipeCount}</strong> later step${willWipeCount===1?'':'s'}.
@@ -3243,6 +3251,117 @@ function renderPanel() {
     const isPri = svg.dataset.btnShape === 'primary';
     roughRect(svg, w, h, isPri ? 200 : 201, { stroke: isPri ? '#c94c3a' : '#6b6658' });
   });
+
+  // Outreach widget setup
+  (function setupOutreachWidget() {
+    const STAGE_KEYS = ['direction', 'community', 'signal', 'summer', 'capstone'];
+    const OUTREACH_KEYWORDS = ['email','reach out','contact','mentor','pi','advisor','apply','application','research','intro','cover letter','outreach','office hours','intern'];
+    const widget = document.getElementById('outreach-widget');
+    const reasonEl = document.getElementById('outreach-reason');
+    const statusEl = document.getElementById('outreach-status');
+    const draftsEl = document.getElementById('outreach-drafts');
+    if (!widget || !reasonEl || !statusEl || !draftsEl) return;
+
+    // Restore saved drafts for this card
+    const outreachKey = 'pathway.outreach.v1';
+    const cardId = option.id || '';
+    const savedAll = (() => { try { return JSON.parse(localStorage.getItem(outreachKey) || '{}'); } catch { return {}; } })();
+    if (savedAll[cardId]) {
+      widget.style.display = 'block';
+      draftsEl.style.display = 'block';
+      draftsEl.innerHTML = savedAll[cardId];
+      reasonEl.textContent = 'Previously drafted — regenerate anytime.';
+    }
+
+    // Client-side heuristic
+    const searchText = [(option.title || ''), (option.description || ''), (option.why_this || option.why || '')].join(' ').toLowerCase();
+    const heuristicMatch = option.human_contact || OUTREACH_KEYWORDS.some(kw => searchText.includes(kw));
+    if (heuristicMatch && widget.style.display === 'none') {
+      widget.style.display = 'block';
+      reasonEl.textContent = 'This step likely involves contacting someone — draft your outreach now.';
+    }
+
+    // Parallel API check (non-blocking)
+    const cardPayload = {
+      title: option.title,
+      description: option.description || option.body,
+      why_this: option.why_this || option.why,
+      human_contact: option.human_contact,
+      stage_key: STAGE_KEYS[stageIdx],
+    };
+    fetch('/api/should-offer-outreach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ card: cardPayload }),
+      signal: AbortSignal.timeout(3000),
+    }).then(r => r.json()).then(data => {
+      if (!data.ok) return;
+      const wEl = document.getElementById('outreach-widget');
+      const rEl = document.getElementById('outreach-reason');
+      if (!wEl || !rEl) return;
+      if (data.offer && wEl.style.display === 'none') {
+        wEl.style.display = 'block';
+      }
+      // Only update reason if API says offer:true (heuristic wins on offer:true already)
+      if (data.offer && data.reason) {
+        rEl.textContent = data.reason;
+      }
+    }).catch(() => { /* fail-open: heuristic already handled */ });
+
+    // Wire outreach draft buttons
+    panelEl.querySelectorAll('[data-outreach-kind]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const kind = btn.dataset.outreachKind;
+        const sEl = document.getElementById('outreach-status');
+        const dEl = document.getElementById('outreach-drafts');
+        if (!sEl || !dEl) return;
+        sEl.textContent = 'Drafting…';
+        dEl.style.display = 'none';
+        try {
+          const profile = composeIntakeProfile(readOnboardingProfile());
+          const resp = await fetch('/api/draft-outreach', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profile,
+              card: {
+                title: option.title,
+                description: option.description || option.body,
+                why_this: option.why_this || option.why,
+                human_contact: option.human_contact,
+                source_url: option.source_url,
+                stage_key: STAGE_KEYS[stageIdx],
+              },
+              kind,
+            }),
+          });
+          const data = await resp.json();
+          if (!data.ok) { sEl.textContent = 'Error: ' + (data.error || 'unknown'); return; }
+          sEl.textContent = '';
+          const drafts = data.drafts;
+          let html = '';
+          for (const [key, draft] of Object.entries(drafts)) {
+            const d = draft;
+            html += `<div style="margin-bottom:14px;border-top:1px dashed #ccc;padding-top:10px">`;
+            html += `<div style="font-family:'Caveat',cursive;font-size:16px;color:var(--ink-navy);margin-bottom:4px">${key.replace(/_/g,' ')}</div>`;
+            if (d.subject) html += `<div style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-muted);margin-bottom:4px"><strong>Subject:</strong> ${d.subject}</div>`;
+            if (d.title) html += `<div style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-muted);margin-bottom:4px"><strong>${d.title}</strong></div>`;
+            html += `<pre style="white-space:pre-wrap;word-break:break-word;font-family:'Kalam',cursive;font-size:13px;background:#fdf9f0;padding:8px;border-radius:4px;margin:0">${d.body || ''}</pre>`;
+            html += `</div>`;
+          }
+          dEl.innerHTML = html;
+          dEl.style.display = 'block';
+          // Save to localStorage
+          const saved = (() => { try { return JSON.parse(localStorage.getItem(outreachKey) || '{}'); } catch { return {}; } })();
+          saved[cardId] = html;
+          localStorage.setItem(outreachKey, JSON.stringify(saved));
+        } catch (err) {
+          const sEl2 = document.getElementById('outreach-status');
+          if (sEl2) sEl2.textContent = 'Request failed.';
+        }
+      });
+    });
+  })();
 
   panelEl.querySelector('[data-action="lock"]')?.addEventListener('click', () => {
     // Fresh rotation for the sticky on each NEW lock (so re-locking the same
