@@ -1,7 +1,49 @@
 'use client';
 import { usePathwayStore } from '@/store/pathway';
 import { STAGES, STAGE_KEYS } from '@/lib/stages';
+import { seedFor, rotationFor } from '@/lib/notebook-engine';
+import { FreehandArrow } from './rough/FreehandArrow';
+import { FreehandUnderline } from './rough/FreehandUnderline';
+import { RoughRect } from './rough/RoughRect';
+import { useMeasure } from '@/hooks/useMeasure';
 import { PanelEmpty } from './PanelEmpty';
+import styles from './notebook.module.css';
+
+function LockButton({ stageIdx, onClick }: { stageIdx: number; onClick: () => void }) {
+  const { ref, size } = useMeasure<HTMLButtonElement>();
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      className={`${styles.btn} ${styles.btnPrimary}`}
+      style={{ '--rot': `${rotationFor('btn-lock-' + stageIdx)}deg` } as React.CSSProperties}
+    >
+      {size.w > 0 && (
+        <RoughRect width={size.w} height={size.h} seed={seedFor('btn-lock-' + stageIdx)} stroke="#c94c3a" />
+      )}
+      <span className={styles.btnLabel}>Lock it in ✓</span>
+    </button>
+  );
+}
+
+function DismissButton({ stageIdx, onClick }: { stageIdx: number; onClick: () => void }) {
+  const { ref, size } = useMeasure<HTMLButtonElement>();
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      className={`${styles.btn} ${styles.btnGhost}`}
+      style={{ '--rot': `${rotationFor('btn-dismiss-' + stageIdx)}deg` } as React.CSSProperties}
+    >
+      {size.w > 0 && (
+        <RoughRect width={size.w} height={size.h} seed={seedFor('btn-dismiss-' + stageIdx)} stroke="#6b6658" />
+      )}
+      <span className={styles.btnLabel}>dismiss</span>
+    </button>
+  );
+}
 
 export function Panel() {
   const nodesById = usePathwayStore((s) => s.nodesById);
@@ -10,6 +52,7 @@ export function Panel() {
   const lockedLen = usePathwayStore((s) => s.lockedNodeIds.length);
   const lockIn = usePathwayStore((s) => s.lockIn);
   const cancel = usePathwayStore((s) => s.cancelPreview);
+  const { ref: ttlRef, size: ttlSize } = useMeasure<HTMLHeadingElement>();
 
   if (openIdx === null && lockedLen === 5) {
     return (
@@ -28,52 +71,61 @@ export function Panel() {
   const willWipe = Math.max(0, lockedLen - stageIdx);
 
   return (
-    <div className="px-10 pt-8 pb-10">
-      <div className="mb-1 text-sm italic text-[#c94c3a]">{node.eyebrow} · {STAGES[stageIdx].stage}</div>
-      <h2 className="mb-4 text-3xl font-bold leading-tight text-[#1e3a5f] font-[Caveat,cursive]">{node.title}</h2>
-      <div className="mb-5 rounded border-l-[3px] border-[#c94c3a] bg-[#fdf5dc] px-4 py-3">
-        <div className="text-sm"><span className="font-bold text-[#c94c3a]">When:</span> {STAGES[stageIdx].when}</div>
-        <div className="text-sm"><span className="font-bold text-[#c94c3a]">Effort:</span> {node.estimated_time_cost}</div>
+    <div className={styles.panel}>
+      <div className={styles.panelKicker}>{node.eyebrow} · {STAGES[stageIdx].stage}</div>
+      <h2 ref={ttlRef} className={styles.panelTtl}>
+        {node.title}
+        <span className={styles.panelTtlUnderline}>
+          {ttlSize.w > 0 && (
+            <FreehandUnderline width={ttlSize.w} seed={seedFor('panel-ttl-' + node.id)} double stroke="#c94c3a" />
+          )}
+        </span>
+      </h2>
+      <div className={styles.panelMeta}>
+        <div className={styles.panelMetaRow}>
+          <span className={styles.panelMetaRowLbl}>When:</span>
+          <span className={styles.panelMetaRowVal}>{STAGES[stageIdx].when}</span>
+        </div>
+        <div className={styles.panelMetaRow}>
+          <span className={styles.panelMetaRowLbl}>Effort:</span>
+          <span className={styles.panelMetaRowVal}>{node.estimated_time_cost}</span>
+        </div>
       </div>
       {node.why_this && (
-        <div className="mb-5 border-l-2 border-[#c94c3a88] pl-3">
-          <div className="mb-1 text-lg font-bold text-[#c94c3a] font-[Caveat,cursive]">why this</div>
-          <div className="text-base">{node.why_this}</div>
+        <div className={styles.panelSect}>
+          <div className={styles.panelSectLbl}>why this</div>
+          <div className={styles.panelWhy}>{node.why_this}</div>
         </div>
       )}
       {node.description && (
-        <div className="mb-5">
-          <div className="mb-1 text-lg font-bold text-[#c94c3a] font-[Caveat,cursive]">details</div>
-          <div className="text-[15px] leading-relaxed">{node.description}</div>
+        <div className={styles.panelSect}>
+          <div className={styles.panelSectLbl}>details</div>
+          <div className={styles.panelBody}>{node.description}</div>
         </div>
       )}
       {node.cites.length > 0 && (
-        <div className="mb-5">
-          <div className="mb-2 text-lg font-bold text-[#c94c3a] font-[Caveat,cursive]">cites</div>
-          {node.cites.map((c, i) => (
-            <div key={i} className="mb-1 flex items-start gap-2 text-sm">
-              <span className="font-bold text-[#c94c3a]">{i + 1}</span>
-              <div><strong>{c.label}</strong> — <a href={c.url} target="_blank" rel="noreferrer" className="underline decoration-[#c94c3a]">{new URL(c.url).host}</a> · {c.summary}</div>
-            </div>
-          ))}
+        <div className={styles.panelSect}>
+          <div className={styles.panelSectLbl}>cites</div>
+          <div className={styles.panelCites}>
+            {node.cites.map((c, i) => (
+              <div key={i} className={styles.panelCite}>
+                <span className={styles.panelCiteSup}>{i + 1}</span>
+                <div className={styles.panelCiteBody}>
+                  <strong>{c.label}</strong> — <a href={c.url} target="_blank" rel="noreferrer">{new URL(c.url).host}</a> · {c.summary}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {isReopening && willWipe > 0 && (
-        <div className="mb-4 border-l-2 border-[#c94c3a] pl-3 text-xs italic text-[#c94c3a]">
+        <div className={styles.reopenWarn}>
           ⚠ Locking here will wipe {willWipe} later step{willWipe > 1 ? 's' : ''}.
         </div>
       )}
-      <div className="flex gap-4">
-        <button
-          type="button"
-          onClick={() => lockIn(stageIdx, node.id)}
-          className="flex-1 rounded border-2 border-[#c94c3a] px-4 py-2 text-xl font-bold text-[#c94c3a] font-[Caveat,cursive]"
-        >Lock it in ✓</button>
-        <button
-          type="button"
-          onClick={cancel}
-          className="flex-1 rounded border-2 border-[#6b6658] px-4 py-2 text-xl font-bold text-[#6b6658] font-[Caveat,cursive]"
-        >dismiss</button>
+      <div className={styles.panelActions}>
+        <LockButton stageIdx={stageIdx} onClick={() => lockIn(stageIdx, node.id)} />
+        <DismissButton stageIdx={stageIdx} onClick={cancel} />
       </div>
     </div>
   );

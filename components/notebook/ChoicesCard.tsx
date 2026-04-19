@@ -1,6 +1,13 @@
 'use client';
 import type { Node } from '@/lib/schemas';
 import { usePathwayStore } from '@/store/pathway';
+import { seedFor, rotationFor } from '@/lib/notebook-engine';
+import { RoughRect } from './rough/RoughRect';
+import { FreehandBox } from './rough/FreehandBox';
+import { FreehandCheck } from './rough/FreehandCheck';
+import { FreehandHighlighter } from './rough/FreehandHighlighter';
+import { useMeasure } from '@/hooks/useMeasure';
+import styles from './notebook.module.css';
 
 type Props = { stageIdx: number; options: Node[] | null; loading: boolean };
 
@@ -8,37 +15,64 @@ export function ChoicesCard({ stageIdx, options, loading }: Props) {
   const previewNodeId = usePathwayStore((s) => s.previewNodeId);
   const setPreview = usePathwayStore((s) => s.setPreview);
   const setState = usePathwayStore.setState;
+  const { ref, size } = useMeasure<HTMLDivElement>();
+  const rot = rotationFor('choices-' + stageIdx);
+
   return (
-    <div className="relative w-full max-w-[460px] rounded border-2 border-dashed border-[#1e3a5f] p-5">
-      <div className="mb-3 flex items-end justify-between">
-        <div className="text-xl font-bold text-[#c94c3a] font-[Caveat,cursive]">Pick one</div>
-        <button
-          type="button"
-          onClick={() => setState({ openPromptStageIdx: null, previewNodeId: null })}
-          className="text-xl text-[#6b6658]"
-        >×</button>
-      </div>
-      {loading && !options?.length ? (
-        <div className="text-sm italic text-[#6b6658]">loading options…</div>
-      ) : !options?.length ? (
-        <div className="text-sm italic text-[#c94c3a]">no options available — hit start over</div>
-      ) : (
-        options.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => setPreview(opt.id)}
-            className={`flex w-full items-start gap-3 py-2 pr-2 text-left text-base text-[#1e3a5f] ${
-              previewNodeId === opt.id ? 'font-bold' : ''
-            }`}
-          >
-            <span className={`mt-1 inline-block h-5 w-5 shrink-0 border-2 border-[#1e3a5f] ${
-              previewNodeId === opt.id ? 'bg-[#f4d35e]' : ''
-            }`} />
-            <span>{opt.title}</span>
-          </button>
-        ))
+    <div
+      ref={ref}
+      className={styles.choices}
+      style={{ '--rot': `${rot}deg` } as React.CSSProperties}
+    >
+      {size.w > 0 && (
+        <RoughRect
+          width={size.w}
+          height={size.h}
+          seed={seedFor('choices-' + stageIdx)}
+        />
       )}
+      <div className={styles.choicesInner}>
+        <div className={styles.choicesHd}>
+          <span>Pick one</span>
+          <button
+            type="button"
+            onClick={() => setState({ openPromptStageIdx: null, previewNodeId: null })}
+            className={styles.choicesClose}
+          >×</button>
+        </div>
+        {loading && !options?.length ? (
+          <div className="text-sm italic text-[#6b6658]">loading options…</div>
+        ) : !options?.length ? (
+          <div className="text-sm italic text-[#c94c3a]">no options available — hit start over</div>
+        ) : (
+          options.map((opt) => {
+            const isSelected = previewNodeId === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setPreview(opt.id)}
+                className={`${styles.choice} ${isSelected ? styles.choiceSelected : ''}`}
+              >
+                <span className={styles.choiceBox}>
+                  <FreehandBox size={22} seed={seedFor('choice-box-' + opt.id)} />
+                  {isSelected && (
+                    <span className="absolute inset-0">
+                      <FreehandCheck size={22} seed={seedFor('choice-check-' + opt.id)} />
+                    </span>
+                  )}
+                </span>
+                <span className={styles.choiceText}>
+                  {opt.title}
+                  <span className={styles.choiceHighlight}>
+                    <FreehandHighlighter width={120} height={22} seed={seedFor('choice-hl-' + opt.id)} />
+                  </span>
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

@@ -1,18 +1,36 @@
 'use client';
 import { usePathwayStore } from '@/store/pathway';
+import { seedFor, rotationFor } from '@/lib/notebook-engine';
+import { RoughRect } from './rough/RoughRect';
+import { useMeasure } from '@/hooks/useMeasure';
+import styles from './notebook.module.css';
 
 export function PromptNode({ stageIdx, prompt }: { stageIdx: number; prompt: string }) {
-  const openPrompt = usePathwayStore((s) => s.openPromptStageIdx);
   const setIdx = usePathwayStore.setState;
+  const { ref, size } = useMeasure<HTMLButtonElement>();
+  const rot = rotationFor('prompt-' + stageIdx);
+
   return (
     <button
+      ref={ref}
       type="button"
       onClick={() => setIdx({ openPromptStageIdx: stageIdx })}
-      className="block w-full max-w-[420px] rounded border-2 border-dashed border-[#1e3a5f] p-4 text-left"
+      className={styles.prompt}
+      style={{ '--rot': `${rot}deg` } as React.CSSProperties}
     >
-      <div className="text-xs italic text-[#c94c3a]">click to open</div>
-      <div className="text-xl font-bold text-[#1e3a5f] font-[Caveat,cursive]">{prompt}</div>
-      <div className="mt-1 text-xs italic text-[#c94c3a]">see 3 choices →</div>
+      {size.w > 0 && (
+        <RoughRect
+          width={size.w}
+          height={size.h}
+          seed={seedFor('prompt-' + stageIdx)}
+          dashed
+        />
+      )}
+      <div className={styles.promptInner}>
+        <div className={styles.promptEyebrow}>click to open</div>
+        <div className={styles.promptTitle}>{prompt}</div>
+        <div className={styles.promptCta}>see 3 choices →</div>
+      </div>
     </button>
   );
 }
