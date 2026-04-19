@@ -1,0 +1,29 @@
+[
+  {
+    "key": "maya",
+    "display_name": "Maya Chen",
+    "profile": {
+      "year": "freshman",
+      "major_category": "stem",
+      "first_gen": true,
+      "aid_status": "pell",
+      "hours_per_week": 8,
+      "interests": ["ai_ml", "data", "storytelling"],
+      "mode": "discovery"
+    }
+  },
+  {
+    "key": "raj",
+    "display_name": "Raj Patel",
+    "profile": {
+      "year": "sophomore",
+      "major_category": "stem",
+      "first_gen": false,
+      "aid_status": "none",
+      "hours_per_week": 15,
+      "interests": ["ai_ml", "math", "teaching"],
+      "mode": "directed",
+      "end_goal": "Apply to PhD programs in AI/ML. Not sure what steps get me there."
+    }
+  }
+]
