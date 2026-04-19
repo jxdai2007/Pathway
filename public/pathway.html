@@ -1469,6 +1469,8 @@ function composeIntakeProfile(answers) {
     interests: (answers.interests || []).slice(0, 3),
     mode: (answers.majorStatus === 'Undeclared' || answers.majorStatus === 'Exploring') ? 'discovery' : ((answers.why || '').trim() ? 'directed' : 'partial'),
     end_goal: (answers.why || '').trim().slice(0, 300) || undefined,
+    background: Array.isArray(answers.background) ? answers.background : [],
+    name: (answers.name || '').trim() || undefined,
   };
 }
 
@@ -3102,7 +3104,7 @@ function renderBoard() {
         ${slots.join('')}
       </div>
       ${allDone ? `
-        <div class="board__done-note">★ every stage executed. Full credit, Maya.</div>
+        <div class="board__done-note">★ every stage executed. Full credit, ${(readOnboardingProfile().name||'friend')}.</div>
       ` : ''}
     </div>`;
 
