@@ -23,7 +23,7 @@ export function rotationFor(key: string, amplitudeDeg = 1.2): number {
 }
 
 const YEAR_LABEL: Record<IntakeProfile['year'], string> = {
-  freshman: 'Freshman', sophomore: 'Sophomore', junior: 'Junior', senior: 'Senior',
+  freshman: 'Freshman', sophomore: 'Sophomore', junior: 'Junior', senior: 'Senior', grad: 'Grad',
 };
 const MAJOR_LABEL: Record<IntakeProfile['major_category'], string> = {
   stem: 'STEM', humanities: 'Humanities', social_science: 'Social Science', undeclared: 'Undeclared',

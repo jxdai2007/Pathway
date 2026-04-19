@@ -5,7 +5,7 @@ import { STAGE_KEYS } from '@/lib/stages';
 export const TypeEnum = z.enum(['fellowship', 'research', 'club', 'program', 'advising', 'course', 'internship']);
 export const MajorCategoryEnum = z.enum(['stem', 'humanities', 'social_science', 'undeclared']);
 export const AidStatusEnum = z.enum(['pell', 'work_study', 'none']);
-export const YearEnum = z.enum(['freshman', 'sophomore', 'junior', 'senior']);
+export const YearEnum = z.enum(['freshman', 'sophomore', 'junior', 'senior', 'grad']);
 export const ModeEnum = z.enum(['directed', 'partial', 'discovery']);
 
 // Reusable contact sub-schema
@@ -64,6 +64,8 @@ export const IntakeProfileSchema = z.object({
   interests: z.array(z.string()).min(1).max(3),
   mode: ModeEnum,
   end_goal: z.string().max(300).optional(),
+  background: z.array(z.string()).optional(),
+  name: z.string().max(80).optional(),
 });
 
 // A single node in the pathway tree
