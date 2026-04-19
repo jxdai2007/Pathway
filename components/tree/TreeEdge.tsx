@@ -17,10 +17,9 @@ export function TreeEdge({ edge, isActive }: { edge: LaidOutEdge; isActive?: boo
       d={d}
       fill="none"
       stroke={stroke}
-      strokeWidth={isActive ? 2.5 : 1.5}
+      strokeWidth={isActive ? 3 : 2}
       strokeLinecap="round"
-      opacity={isActive ? 1 : 0.75}
-      filter="url(#roughen)"
+      opacity={isActive ? 1 : 0.7}
     />
   );
 }
