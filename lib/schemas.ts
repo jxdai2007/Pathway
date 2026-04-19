@@ -22,7 +22,7 @@ export const CiteSchema = z.object({
   url:     z.string().url(),
 });
 
-export const StageKeyEnum = z.enum(STAGE_KEYS as unknown as [string, ...string[]]);
+export const StageKeyEnum = z.enum(STAGE_KEYS);
 
 // Corpus item (single source of truth — forkers replicate for other schools)
 export const CorpusItemSchema = z.object({

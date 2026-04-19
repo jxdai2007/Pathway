@@ -68,7 +68,7 @@ describe('ExpandResponseSchema discriminated union', () => {
   });
 });
 
-import { CiteSchema, NodeSchema, ExpandRequestSchema, StageKeyEnum } from '@/lib/schemas';
+import { CiteSchema, StageKeyEnum } from '@/lib/schemas';
 
 describe('CiteSchema', () => {
   const valid = { label: 'UCLA CS', summary: 'major info', url: 'https://cs.ucla.edu' };

@@ -13,12 +13,13 @@ describe('callClaudeExpand', () => {
 });
 
 import { buildSystemPrompt } from '@/lib/claude';
+import type { IntakeProfile } from '@/lib/schemas';
 
 describe('buildSystemPrompt', () => {
-  const profile = {
+  const profile: IntakeProfile = {
     year: 'freshman', major_category: 'stem', first_gen: true,
     aid_status: 'pell', hours_per_week: 8, interests: ['ai_ml'], mode: 'discovery',
-  } as const;
+  };
   it('includes stage_guidance for given stage_key', () => {
     const s = buildSystemPrompt({
       profile, stage_key: 'community', parent_path_tag: 'ai',
