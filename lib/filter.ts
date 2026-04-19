@@ -1,3 +1,23 @@
+import { NodeSchema } from '@/lib/schemas';
+import type { Node } from '@/lib/schemas';
+import type { StageKey } from '@/lib/stages';
+import { z } from 'zod';
+
+const url = z.string().url();
+
+export function filterChildren(candidates: unknown[], stage_key: StageKey): { kept: Node[]; dropped: number } {
+  const kept: Node[] = [];
+  let dropped = 0;
+  for (const c of candidates) {
+    const parsed = NodeSchema.safeParse(c);
+    if (!parsed.success) { dropped++; continue; }
+    if (parsed.data.stage_key !== stage_key) { dropped++; continue; }
+    if (parsed.data.cites.some((x) => !url.safeParse(x.url).success)) { dropped++; continue; }
+    kept.push(parsed.data);
+  }
+  return { kept, dropped };
+}
+
 import type { CorpusItem, IntakeProfile, PathTraceItem } from './schemas';
 
 type Scored = CorpusItem & { _score: number };

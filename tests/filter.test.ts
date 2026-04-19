@@ -29,3 +29,30 @@ describe('filterAndScore', () => {
     expect(result.length).toBe(20);
   });
 });
+
+import { filterChildren } from '@/lib/filter';
+
+const base = {
+  id: 'x', parent_id: null, opportunity_id: null, title: 'T',
+  description: '', why_this: '', why_now: '', todos: [],
+  source_url: null, human_contact: null, outreach_email_draft: null,
+  estimated_time_cost: '2 hrs', leads_to_tags: [],
+  stage_key: 'direction', eyebrow: 'Direction', path_tag: 'ai', cites: [],
+} as const;
+
+describe('filterChildren — stage_key + cites', () => {
+  it('drops nodes whose stage_key mismatches request', () => {
+    const out = filterChildren([{ ...base, stage_key: 'summer' } as any], 'direction');
+    expect(out.kept).toHaveLength(0);
+    expect(out.dropped).toBe(1);
+  });
+  it('drops nodes with invalid cite URL', () => {
+    const bad = { ...base, cites: [{ label: 'x', summary: 'y', url: 'not-a-url' }] };
+    const out = filterChildren([bad as any], 'direction');
+    expect(out.kept).toHaveLength(0);
+  });
+  it('keeps a fully valid node', () => {
+    const out = filterChildren([base as any], 'direction');
+    expect(out.kept).toHaveLength(1);
+  });
+});
