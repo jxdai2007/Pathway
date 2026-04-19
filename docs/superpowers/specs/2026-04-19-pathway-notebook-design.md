@@ -38,17 +38,13 @@ Replace the current SVG tree at `/pathway` with a paper-notebook interaction fai
 
 ## 2. Schema & Data Model
 
-### 2.1 Stage config (`lib/notebook-engine.ts`)
+### 2.1 Stage config
+
+To avoid an import cycle between `lib/schemas.ts` and `lib/notebook-engine.ts`, enum-level constants live in their own leaf module:
+
+**`lib/stages.ts` (new, no dependencies on other project modules):**
 
 ```ts
-export const STAGES = [
-  { key: 'direction', stage: 'Stage 1 · Declare a direction', when: 'Month 1–2 · Fall 2026',           prompt: 'Pick your starting direction' },
-  { key: 'community', stage: 'Stage 2 · Find your people',    when: 'Month 2–4 · Fall/Winter 2026',    prompt: 'Pick your first community' },
-  { key: 'signal',    stage: 'Stage 3 · Build signal',        when: 'Winter/Spring 2027',              prompt: 'Earn your first credential' },
-  { key: 'summer',    stage: 'Stage 4 · Summer',              when: 'Summer 2027',                     prompt: 'Pick your sophomore summer' },
-  { key: 'capstone',  stage: 'Stage 5 · Year 2 capstone',     when: 'Fall 2027–Spring 2028',           prompt: 'Set your year-2 bet' },
-] as const;
-
 export const STAGE_KEYS = ['direction','community','signal','summer','capstone'] as const;
 export type StageKey = typeof STAGE_KEYS[number];
 
@@ -59,9 +55,17 @@ export const STAGE_EYEBROW: Record<StageKey, string> = {
   summer:    'Summer',
   capstone:  'Capstone',
 };
+
+export const STAGES = [
+  { key: 'direction', stage: 'Stage 1 · Declare a direction', when: 'Month 1–2 · Fall 2026',           prompt: 'Pick your starting direction' },
+  { key: 'community', stage: 'Stage 2 · Find your people',    when: 'Month 2–4 · Fall/Winter 2026',    prompt: 'Pick your first community' },
+  { key: 'signal',    stage: 'Stage 3 · Build signal',        when: 'Winter/Spring 2027',              prompt: 'Earn your first credential' },
+  { key: 'summer',    stage: 'Stage 4 · Summer',              when: 'Summer 2027',                     prompt: 'Pick your sophomore summer' },
+  { key: 'capstone',  stage: 'Stage 5 · Year 2 capstone',     when: 'Fall 2027–Spring 2028',           prompt: 'Set your year-2 bet' },
+] as const;
 ```
 
-`STAGE_KEYS` is the single source of truth for the `stage_key` enum and is imported by `lib/schemas.ts` (via `z.enum([...STAGE_KEYS])`), the prompt builder, the fallback generator, the store, and tests.
+`lib/schemas.ts` and `lib/notebook-engine.ts` both import from `lib/stages.ts`. `STAGE_KEYS` is the single source of truth for the `stage_key` enum (consumed via `z.enum([...STAGE_KEYS])` in schemas, by the prompt builder, fallback generator, store, and tests).
 
 ### 2.2 Schema additions (`lib/schemas.ts`)
 
@@ -119,7 +123,7 @@ type PathwayState = {
 };
 ```
 
-Persistence (existing `zustand/middleware/persist`): persist `nodesById`, `lockedNodeIds`, `openPromptStageIdx`. Do not persist `previewNodeId`, `justLockedStageIdx`, `inFlight`, `humility`.
+Persistence (existing `zustand/middleware/persist`): persist `nodesById`, `lockedNodeIds`, `openPromptStageIdx`. Do not persist `previewNodeId`, `justLockedStageIdx`, `inFlight`, `humility`. Bump the persistence key from `pathway-state-v1` → `pathway-state-v2` so prior tree-shaped state does not hydrate into the new chain model (zustand drops state whose key doesn't match).
 
 ### 2.4 Options-per-stage derivation
 
@@ -176,6 +180,9 @@ app/
   pathway/page.tsx                      [REWRITE] renders <Notebook/>
   layout.tsx                            [UPDATE] load Caveat + Kalam via next/font
 
+lib/
+  stages.ts                             [NEW] STAGES, STAGE_KEYS, STAGE_EYEBROW (leaf; no project imports)
+
 components/
   notebook/                             [NEW]
     Notebook.tsx
@@ -201,11 +208,10 @@ components/
       FreehandSquiggle.tsx
     notebook.module.css
 
-lib/
-  notebook-engine.ts                    [NEW] STAGES, STAGE_KEYS, STAGE_EYEBROW,
-                                               optionsForStage, synthesizeTodos,
+  notebook-engine.ts                    [NEW] optionsForStage, synthesizeTodos,
                                                rotationFor, seedFor,
                                                composeRootSub, buildPathTrace
+                                               (imports from lib/stages.ts)
   freehand.ts                           [NEW] seededRng, getStroke wrapper,
                                                freehand* path builders
   claude.ts                             [UPDATE] stage-aware system prompt
@@ -250,6 +256,10 @@ DELETE:
 - `lib/notebook-engine.ts` and `lib/freehand.ts` are pure — no React, no DOM, no store. Safe to unit-test in isolation and tree-shake into server or edge contexts.
 - `components/notebook/rough/*` are presentational — take `{ width, height, seed, ... }` props, no store access.
 - `Notebook.tsx` owns store selection and passes sliced state down. Leaf components take primitive props.
+
+### Chrome-right label
+
+Default: `"You · {mode}"` (derived from profile). `IntakeProfile` has no `name` field, so the HTML's "Maya · Discovery" is a demo-only injection: when the user arrives via the onboarding `handleDemoMaya` path, `profile.demo_persona = 'Maya'` is set client-side (store-only, not schema) and the chrome reads that for the label. No schema change required.
 - CSS Module owns paper/sticky/animation styles; Tailwind handles layout primitives and typography tokens.
 
 ## 4. Data Flow
@@ -282,6 +292,9 @@ click "Lock it in" ─▶ lockIn(stageIdx, nodeId)
                         ├─ openPromptStageIdx = stageIdx+1 (or null if at last stage)
                         ├─ setPreview(null)
                         └─ if stageIdx < 4: startExpand(stageIdx+1, nodeId)
+                           else (stageIdx === 4): terminal state — Panel swaps to
+                           a "Year-2 bet locked · start over to replan" card with
+                           a reset action; chrome-right badge appends " · complete".
                                            │
                                            ▼
                         POST /api/expand-node
