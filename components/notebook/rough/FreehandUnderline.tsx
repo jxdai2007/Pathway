@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { freehandUnderline } from '@/lib/freehand';
 
 type Props = {
@@ -8,17 +9,21 @@ type Props = {
   strokeWidth?: number;
 };
 
-export function FreehandUnderline({
+export const FreehandUnderline = memo(function FreehandUnderline({
   width,
   seed,
   double: isDouble,
   stroke = '#1e3a5f',
   strokeWidth = 2,
 }: Props) {
+  const d = useMemo(
+    () => freehandUnderline(width, { seed, double: isDouble }),
+    [width, seed, isDouble]
+  );
   return (
     <svg width={width} height={10} style={{ overflow: 'visible' }}>
       <path
-        d={freehandUnderline(width, { seed, double: isDouble })}
+        d={d}
         fill="none"
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -27,4 +32,4 @@ export function FreehandUnderline({
       />
     </svg>
   );
-}
+});

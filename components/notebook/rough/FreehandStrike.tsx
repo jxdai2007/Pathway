@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { freehandStrike } from '@/lib/freehand';
 
 type Props = {
@@ -7,16 +8,17 @@ type Props = {
   strokeWidth?: number;
 };
 
-export function FreehandStrike({
+export const FreehandStrike = memo(function FreehandStrike({
   width,
   seed,
   stroke = '#1e3a5f',
   strokeWidth = 2,
 }: Props) {
+  const d = useMemo(() => freehandStrike(width, seed), [width, seed]);
   return (
     <svg width={width} height={8} style={{ overflow: 'visible' }}>
       <path
-        d={freehandStrike(width, seed)}
+        d={d}
         fill="none"
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -25,4 +27,4 @@ export function FreehandStrike({
       />
     </svg>
   );
-}
+});

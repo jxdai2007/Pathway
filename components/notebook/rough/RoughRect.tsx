@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import rough from 'roughjs';
 
 type Props = {
@@ -13,7 +13,7 @@ type Props = {
   strokeWidth?: number;
 };
 
-export function RoughRect({
+export const RoughRect = memo(function RoughRect({
   width,
   height,
   seed,
@@ -70,4 +70,4 @@ export function RoughRect({
       height={height}
     />
   );
-}
+});

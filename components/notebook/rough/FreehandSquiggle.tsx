@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { freehandSquiggle } from '@/lib/freehand';
 
 type Props = {
@@ -7,16 +8,17 @@ type Props = {
   strokeWidth?: number;
 };
 
-export function FreehandSquiggle({
+export const FreehandSquiggle = memo(function FreehandSquiggle({
   width,
   seed,
   stroke = '#1e3a5f',
   strokeWidth = 2,
 }: Props) {
+  const d = useMemo(() => freehandSquiggle(width, seed), [width, seed]);
   return (
     <svg width={width} height={12} style={{ overflow: 'visible' }}>
       <path
-        d={freehandSquiggle(width, seed)}
+        d={d}
         fill="none"
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -25,4 +27,4 @@ export function FreehandSquiggle({
       />
     </svg>
   );
-}
+});

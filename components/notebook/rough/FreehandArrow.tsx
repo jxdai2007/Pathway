@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { freehandArrow } from '@/lib/freehand';
 
 type Props = {
@@ -11,7 +12,7 @@ type Props = {
   strokeWidth?: number;
 };
 
-export function FreehandArrow({
+export const FreehandArrow = memo(function FreehandArrow({
   x1,
   y1,
   x2,
@@ -26,16 +27,20 @@ export function FreehandArrow({
   const minY = Math.min(y1, y2) - pad;
   const svgW = Math.abs(x2 - x1) + pad * 2;
   const svgH = Math.abs(y2 - y1) + pad * 2;
-  // Translate coords to local SVG space
   const lx1 = x1 - minX;
   const ly1 = y1 - minY;
   const lx2 = x2 - minX;
   const ly2 = y2 - minY;
 
+  const d = useMemo(
+    () => freehandArrow(lx1, ly1, lx2, ly2, { curve, seed }),
+    [lx1, ly1, lx2, ly2, curve, seed]
+  );
+
   return (
     <svg width={svgW} height={svgH} style={{ overflow: 'visible' }}>
       <path
-        d={freehandArrow(lx1, ly1, lx2, ly2, { curve, seed })}
+        d={d}
         fill="none"
         stroke={stroke}
         strokeWidth={strokeWidth}
@@ -44,4 +49,4 @@ export function FreehandArrow({
       />
     </svg>
   );
-}
+});
