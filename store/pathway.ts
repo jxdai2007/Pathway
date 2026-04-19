@@ -9,12 +9,14 @@ type InFlight = { requestId: string; abort: AbortController };
 type PathwayState = {
   nodesById: Record<string, NodeRecord>;
   selectedId: string | null;
+  focusedSeedId: string | null;
   inFlight: Record<string, InFlight>;
   requestCounter: number;
   humility: string | null;
 
   setSelected: (id: string | null) => void;
   setHumility: (h: string | null) => void;
+  setFocusedSeedId: (id: string | null) => void;
   addNodes: (nodes: Node[]) => void;
   toggleTodoDone: (nodeId: string, todoIdx: number) => void;
   startExpand: (parentId: string) => { requestId: string; signal: AbortSignal };
@@ -28,12 +30,14 @@ export const usePathwayStore = create<PathwayState>()(
     (set, get) => ({
       nodesById: {},
       selectedId: null,
+      focusedSeedId: null,
       inFlight: {},
       requestCounter: 0,
       humility: null,
 
       setSelected: (id) => set({ selectedId: id }),
       setHumility: (h) => set({ humility: h }),
+      setFocusedSeedId: (id) => set({ focusedSeedId: id }),
 
       addNodes: (nodes) => set((state) => {
         const next = { ...state.nodesById };
@@ -98,7 +102,7 @@ export const usePathwayStore = create<PathwayState>()(
         }
       },
 
-      reset: () => set({ nodesById: {}, selectedId: null, inFlight: {}, requestCounter: 0, humility: null }),
+      reset: () => set({ nodesById: {}, selectedId: null, focusedSeedId: null, inFlight: {}, requestCounter: 0, humility: null }),
     }),
     {
       name: 'pathway-state-v1',
@@ -115,6 +119,7 @@ export const usePathwayStore = create<PathwayState>()(
       partialize: (state) => ({
         nodesById: state.nodesById,
         requestCounter: state.requestCounter,
+        focusedSeedId: state.focusedSeedId,
       }) as any,
     }
   )

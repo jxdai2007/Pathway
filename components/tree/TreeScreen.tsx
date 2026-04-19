@@ -5,6 +5,7 @@ import type { FirstLayerSeed, Node as PathwayNode, ExpandResponse } from '@/lib/
 import { useProfileStore } from '@/store/profile';
 import { usePathwayStore } from '@/store/pathway';
 import { TreeCanvas } from './TreeCanvas';
+import { MissBanner } from './MissBanner';
 import type { TreeUINode, PathColor, LaidOutNode } from '@/lib/tree-layout';
 
 const PATH_COLORS: PathColor[] = ['blue', 'gold', 'slate'];
@@ -29,6 +30,7 @@ export function TreeScreen() {
   const profile = useProfileStore((s) => s.profile);
   const nodesById = usePathwayStore((s) => s.nodesById);
   const selectedId = usePathwayStore((s) => s.selectedId);
+  const focusedSeedId = usePathwayStore((s) => s.focusedSeedId);
   const setSelected = usePathwayStore((s) => s.setSelected);
   const setHumility = usePathwayStore((s) => s.setHumility);
   const startExpand = usePathwayStore((s) => s.startExpand);
@@ -60,16 +62,23 @@ export function TreeScreen() {
       leads_to_tags: [s.path_tag],
     }));
     usePathwayStore.getState().addNodes([rootNode, ...seedNodes]);
+    if (usePathwayStore.getState().focusedSeedId == null && seedNodes[0]) {
+      usePathwayStore.getState().setFocusedSeedId(seedNodes[0].id);
+    }
   }, [profile]);
 
-  // Build TreeUINode tree from store nodesById
+  // Build TreeUINode tree from store nodesById, filtered to focused seed only at root level
   const root: TreeUINode | null = useMemo(() => {
     const rootRec = nodesById['root'];
     if (!rootRec) return null;
 
     function build(id: string, depth: number, inheritedColor?: PathColor): TreeUINode {
       const rec = nodesById[id];
-      const children = rec?.children ?? [];
+      const allChildren = rec?.children ?? [];
+      // For root only, filter to the focused seed
+      const childIds = id === 'root' && focusedSeedId
+        ? allChildren.filter(c => c === focusedSeedId)
+        : allChildren;
       const pathColor =
         depth === 1 ? PATH_COLORS[rootRec.children.indexOf(id) % PATH_COLORS.length]
         : inheritedColor;
@@ -83,11 +92,11 @@ export function TreeScreen() {
         // Deadline comes from the corpus item, but we don't have it client-side for Claude-returned children
         // For Tier-1 visual only, leave undefined. T11.5 may compute client-side if needed.
         deadline: undefined,
-        children: children.map(cid => build(cid, depth + 1, pathColor)),
+        children: childIds.map(cid => build(cid, depth + 1, pathColor)),
       };
     }
     return build('root', 0);
-  }, [nodesById]);
+  }, [nodesById, focusedSeedId]);
 
   const expandedIds = useMemo(() => {
     const ids = new Set<string>();
@@ -145,6 +154,7 @@ export function TreeScreen() {
         <h1 className="text-display font-bold text-ink">Your Pathway</h1>
         <p className="text-body text-ink-2">A sketch of your next two years as a tree you can walk through.</p>
       </header>
+      <MissBanner />
       <div className="max-w-[1200px] mx-auto overflow-auto">
         <TreeCanvas
           root={root}
