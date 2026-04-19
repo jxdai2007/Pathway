@@ -3,25 +3,30 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Node } from '@/lib/schemas';
 
 type NodeStatus = 'idle' | 'loading' | 'loaded' | 'error';
-type NodeRecord = Node & { status: NodeStatus; children: string[] };
+type NodeRecord = Node & { status: NodeStatus };
 type InFlight = { requestId: string; abort: AbortController };
 
 type PathwayState = {
   nodesById: Record<string, NodeRecord>;
-  selectedId: string | null;
-  focusedSeedId: string | null;
-  inFlight: Record<string, InFlight>;
-  requestCounter: number;
+  lockedNodeIds: string[];
+  openPromptStageIdx: number | null;
+  previewNodeId: string | null;
+  justLockedStageIdx: number | null;
   humility: string | null;
+  inFlight: Record<number, InFlight>;
+  requestCounter: number;
 
-  setSelected: (id: string | null) => void;
+  setPreview: (nodeId: string | null) => void;
+  cancelPreview: () => void;
   setHumility: (h: string | null) => void;
-  setFocusedSeedId: (id: string | null) => void;
   addNodes: (nodes: Node[]) => void;
-  toggleTodoDone: (nodeId: string, todoIdx: number) => void;
-  startExpand: (parentId: string) => { requestId: string; signal: AbortSignal };
-  acceptChildren: (parentId: string, requestId: string, children: Node[]) => boolean;
-  abortExpand: (parentId: string) => void;
+  toggleTodoDone: (nodeId: string, idx: number) => void;
+  lockIn: (stageIdx: number, nodeId: string) => void;
+  reopen: (stageIdx: number) => void;
+  startExpand: (stageIdx: number, parentNodeId: string | null) =>
+    { requestId: string; signal: AbortSignal };
+  acceptChildren: (stageIdx: number, requestId: string, children: Node[]) => boolean;
+  abortExpand: (stageIdx: number) => void;
   reset: () => void;
 };
 
@@ -29,32 +34,21 @@ export const usePathwayStore = create<PathwayState>()(
   persist(
     (set, get) => ({
       nodesById: {},
-      selectedId: null,
-      focusedSeedId: null,
+      lockedNodeIds: [],
+      openPromptStageIdx: 0,
+      previewNodeId: null,
+      justLockedStageIdx: null,
+      humility: null,
       inFlight: {},
       requestCounter: 0,
-      humility: null,
 
-      setSelected: (id) => set({ selectedId: id }),
+      setPreview: (nodeId) => set({ previewNodeId: nodeId }),
+      cancelPreview: () => set({ previewNodeId: null }),
       setHumility: (h) => set({ humility: h }),
-      setFocusedSeedId: (id) => set({ focusedSeedId: id }),
 
       addNodes: (nodes) => set((state) => {
         const next = { ...state.nodesById };
-        for (const n of nodes) {
-          const existing = next[n.id];
-          next[n.id] = {
-            ...n,
-            status: 'loaded',
-            children: existing?.children ?? [],
-          };
-          if (n.parent_id && next[n.parent_id]) {
-            const list = next[n.parent_id].children;
-            if (!list.includes(n.id)) {
-              next[n.parent_id] = { ...next[n.parent_id], children: [...list, n.id] };
-            }
-          }
-        }
+        for (const n of nodes) next[n.id] = { ...n, status: 'loaded' };
         return { nodesById: next };
       }),
 
@@ -65,61 +59,89 @@ export const usePathwayStore = create<PathwayState>()(
         return { nodesById: { ...state.nodesById, [nodeId]: { ...node, todos } } };
       }),
 
-      startExpand: (parentId) => {
+      lockIn: (stageIdx, nodeId) => {
+        set((state) => ({
+          lockedNodeIds: [...state.lockedNodeIds.slice(0, stageIdx), nodeId],
+          openPromptStageIdx: stageIdx < 4 ? stageIdx + 1 : null,
+          previewNodeId: null,
+          justLockedStageIdx: stageIdx,
+        }));
+        setTimeout(() => {
+          if (get().justLockedStageIdx === stageIdx) {
+            set({ justLockedStageIdx: null });
+          }
+        }, 1400);
+      },
+
+      reopen: (stageIdx) => {
+        const state = get();
+        const prior = state.lockedNodeIds[stageIdx] ?? null;
+        set({
+          lockedNodeIds: state.lockedNodeIds.slice(0, stageIdx),
+          openPromptStageIdx: stageIdx,
+          previewNodeId: prior,
+        });
+      },
+
+      startExpand: (stageIdx, parentNodeId) => {
         const counter = get().requestCounter + 1;
         const requestId = `req-${counter}`;
         const abort = new AbortController();
-        const prior = get().inFlight[parentId];
+        const prior = get().inFlight[stageIdx];
         if (prior) prior.abort.abort();
         set({
           requestCounter: counter,
-          inFlight: { ...get().inFlight, [parentId]: { requestId, abort } },
+          inFlight: { ...get().inFlight, [stageIdx]: { requestId, abort } },
         });
+        void parentNodeId; // parent is encoded in the HTTP call
         return { requestId, signal: abort.signal };
       },
 
-      acceptChildren: (parentId, requestId, children) => {
-        const flight = get().inFlight[parentId];
+      acceptChildren: (stageIdx, requestId, children) => {
+        const flight = get().inFlight[stageIdx];
         if (!flight || flight.requestId !== requestId) return false;
         get().addNodes(children);
         set((state) => {
           const next = { ...state.inFlight };
-          delete next[parentId];
+          delete next[stageIdx];
           return { inFlight: next };
         });
         return true;
       },
 
-      abortExpand: (parentId) => {
-        const flight = get().inFlight[parentId];
+      abortExpand: (stageIdx) => {
+        const flight = get().inFlight[stageIdx];
         if (flight) {
           flight.abort.abort();
           set((state) => {
             const next = { ...state.inFlight };
-            delete next[parentId];
+            delete next[stageIdx];
             return { inFlight: next };
           });
         }
       },
 
-      reset: () => set({ nodesById: {}, selectedId: null, focusedSeedId: null, inFlight: {}, requestCounter: 0, humility: null }),
+      reset: () => {
+        for (const f of Object.values(get().inFlight)) f.abort.abort();
+        set({
+          nodesById: {}, lockedNodeIds: [], openPromptStageIdx: 0,
+          previewNodeId: null, justLockedStageIdx: null,
+          humility: null, inFlight: {}, requestCounter: 0,
+        });
+      },
     }),
     {
-      name: 'pathway-state-v1',
+      name: 'pathway-state-v2',
       storage: createJSONStorage(() =>
         typeof window !== 'undefined'
           ? window.localStorage
-          : {
-              getItem: () => null,
-              setItem: () => {},
-              removeItem: () => {},
-            }
+          : { getItem: () => null, setItem: () => {}, removeItem: () => {} }
       ),
-      // Persist ONLY non-sensitive, serializable fields. No in-flight controllers.
       partialize: (state) => ({
         nodesById: state.nodesById,
+        lockedNodeIds: state.lockedNodeIds,
+        openPromptStageIdx: state.openPromptStageIdx,
         requestCounter: state.requestCounter,
-        focusedSeedId: state.focusedSeedId,
       }) as any,
     }
   )
