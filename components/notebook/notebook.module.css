@@ -1,0 +1,1315 @@
+/* ================================================================
+   notebook.module.css
+   Ported from "Scroll directions.html" <style> block (visual spec).
+   kebab-case → camelCase for CSS Module exports.
+   ================================================================ */
+
+/* @property must be at file scope */
+@property --write {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+
+/* ----------------------------------------------------------------
+   CSS custom properties (palette)
+   ---------------------------------------------------------------- */
+:global(:root) {
+  --ink-navy: #1e3a5f;
+  --ink-black: #2a2a28;
+  --ink-red: #c94c3a;
+  --ink-muted: #6b6658;
+  --highlighter: rgba(244, 211, 94, 0.42);
+  --paper: #fdfaf0;
+  --paper-edge: #ebe3cc;
+  --rule-blue: #b8c8d8;
+  --margin-red: #c94c3a;
+}
+
+/* ----------------------------------------------------------------
+   Paper background + ruling lines
+   .paper-bg → .paper
+   ---------------------------------------------------------------- */
+.paper {
+  position: relative;
+  background-color: var(--paper);
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 31px,
+      rgba(184, 200, 216, 0.45) 31px,
+      rgba(184, 200, 216, 0.45) 32px
+    );
+}
+
+/* Subtle paper grain via SVG noise */
+.paper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.28  0 0 0 0 0.24  0 0 0 0 0.14  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Red margin line */
+.paper::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 80px;
+  width: 1.5px;
+  background: var(--margin-red);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+  box-shadow: 0 0 2px rgba(201, 76, 58, 0.35);
+}
+
+/* ----------------------------------------------------------------
+   Edge vignette  .paper-vignette → .paperVignette
+   ---------------------------------------------------------------- */
+.paperVignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 60px rgba(100, 85, 55, 0.18);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ----------------------------------------------------------------
+   Canvas wrapper  .canvas / .canvas__hd → .canvas / .canvasHd …
+   ---------------------------------------------------------------- */
+.canvas {
+  padding: 44px 40px 90px;
+  max-width: 1400px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 5;
+}
+
+.canvasHd {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 8px;
+  padding-left: 60px;
+}
+
+.canvasTitle {
+  font-family: "Caveat", cursive;
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--ink-navy);
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.canvasSub {
+  font-family: "Kalam", cursive;
+  font-size: 16px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.canvasHint {
+  font-family: "Kalam", cursive;
+  font-size: 15px;
+  color: var(--ink-muted);
+  margin: 6px 0 24px 60px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-style: italic;
+}
+
+.canvasHint strong {
+  color: var(--ink-navy);
+  font-weight: 700;
+  font-style: normal;
+}
+
+.canvasReset {
+  background: transparent;
+  border: 1.5px dashed var(--ink-muted);
+  color: var(--ink-navy);
+  font-family: "Kalam", cursive;
+  padding: 3px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-left: 10px;
+  transform: rotate(-1deg);
+}
+
+.canvasReset:hover {
+  border-color: var(--ink-red);
+  color: var(--ink-red);
+}
+
+/* ----------------------------------------------------------------
+   Mock label  .mock / .mock__lbl → .mock / .mockLbl …
+   ---------------------------------------------------------------- */
+.mock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mockLbl {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 60px;
+}
+
+.mockLetter {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 40px;
+  color: var(--ink-red);
+  line-height: 1;
+  transform: rotate(-3deg);
+  display: inline-block;
+}
+
+.mockName {
+  font-family: "Kalam", cursive;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink-navy);
+}
+
+/* ----------------------------------------------------------------
+   Frame + chrome  .frame / .frame__chrome → .frame / .frameChrome …
+   ---------------------------------------------------------------- */
+.frame {
+  position: relative;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 24px 50px -28px rgba(60, 50, 30, 0.4),
+    0 8px 20px -12px rgba(60, 50, 30, 0.25);
+  overflow: hidden;
+  height: 860px;
+  display: flex;
+  flex-direction: column;
+}
+
+.frameChrome {
+  flex: 0 0 auto;
+  height: 52px;
+  background: rgba(253, 250, 240, 0.55);
+  backdrop-filter: blur(4px);
+  border-bottom: 1.5px solid rgba(107, 102, 88, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 22px;
+  font-family: "Kalam", cursive;
+  font-size: 14px;
+  color: var(--ink-muted);
+  position: relative;
+  z-index: 3;
+}
+
+.frameChromeLogo {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-navy);
+}
+
+.frameChromeTitle {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 24px;
+  color: var(--ink-navy);
+  line-height: 1;
+}
+
+.frameChromeSpacer {
+  flex: 1;
+}
+
+.frameChromeRight {
+  font-family: "Kalam", cursive;
+  font-size: 14px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* ----------------------------------------------------------------
+   Split layout  .split / .split__list → .split / .splitList …
+   ---------------------------------------------------------------- */
+.split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+  z-index: 3;
+}
+
+.splitList {
+  overflow-y: auto;
+  border-right: 1.5px solid rgba(107, 102, 88, 0.2);
+  position: relative;
+}
+
+.splitList::-webkit-scrollbar {
+  width: 8px;
+}
+
+.splitList::-webkit-scrollbar-thumb {
+  background: rgba(107, 102, 88, 0.3);
+  border-radius: 4px;
+}
+
+.splitPanel {
+  overflow-y: auto;
+  position: relative;
+}
+
+.splitPanel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.splitPanel::-webkit-scrollbar-thumb {
+  background: rgba(107, 102, 88, 0.3);
+  border-radius: 4px;
+}
+
+/* ----------------------------------------------------------------
+   Timeline  .tl / .tl__spine-svg → .tl / .tlSpineSvg …
+   ---------------------------------------------------------------- */
+.tl {
+  padding: 32px 32px 60px 110px;
+  position: relative;
+  min-height: 100%;
+}
+
+.tlSpineSvg {
+  position: absolute;
+  left: 90px;
+  top: 40px;
+  bottom: 40px;
+  width: 40px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.tlRow {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 18px;
+}
+
+/* .tl__row--has-sticky → .tlRowHasSticky */
+.tlRowHasSticky {
+  min-height: 200px;
+  margin-bottom: 32px;
+}
+
+/* .tl__stage-lbl → .tlStageLbl */
+.tlStageLbl {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--ink-navy);
+  margin: 18px 0 6px;
+  padding: 0 4px;
+  position: relative;
+  display: inline-block;
+}
+
+/* ----------------------------------------------------------------
+   Marginalia
+   ---------------------------------------------------------------- */
+.marginalia {
+  position: absolute;
+  left: -68px;
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  color: var(--ink-red);
+  font-size: 20px;
+  line-height: 1;
+  transform-origin: center;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------
+   Node  .node / .node__shape → .node / .nodeShape …
+   ---------------------------------------------------------------- */
+.node {
+  position: relative;
+  width: 92%;
+  max-width: 420px;
+  padding: 14px 20px 16px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: "Kalam", cursive;
+  color: var(--ink-black);
+  transition: transform 160ms;
+  transform: rotate(var(--rot, 0deg));
+}
+
+.node:hover {
+  transform: rotate(var(--rot, 0deg)) translateY(-1px);
+}
+
+.nodeShape {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.nodeInner {
+  position: relative;
+  z-index: 1;
+}
+
+/* .node--root → .nodeRoot */
+.nodeRoot {
+  max-width: 460px;
+  padding: 18px 24px 20px;
+}
+
+/* Scoped sub-elements inside .nodeRoot */
+.nodeRoot .nodeTitleMain {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 42px;
+  color: var(--ink-navy);
+  line-height: 1;
+  margin-bottom: 4px;
+  display: inline-block;
+}
+
+.nodeRoot .nodeSub {
+  font-family: "Kalam", cursive;
+  font-size: 16px;
+  color: var(--ink-black);
+  margin-top: 10px;
+}
+
+.nodeRoot .nodeSelfArrow {
+  position: absolute;
+  left: -40px;
+  top: 30px;
+  width: 60px;
+  height: 70px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* .node--locked → .nodeLocked */
+.nodeLocked {
+  cursor: pointer;
+}
+
+.nodeLocked .nodeEyebrow {
+  font-family: "Kalam", cursive;
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-style: italic;
+  margin-bottom: 2px;
+}
+
+.nodeLocked .nodeTitle {
+  font-family: "Kalam", cursive;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink-navy);
+  line-height: 1.35;
+}
+
+.nodeLocked .nodeCheck {
+  position: absolute;
+  right: -8px;
+  top: -12px;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Standalone class exports for when used outside .nodeLocked context */
+.nodeEyebrow {
+  font-family: "Kalam", cursive;
+  font-size: 13px;
+  color: var(--ink-muted);
+  font-style: italic;
+  margin-bottom: 2px;
+}
+
+.nodeTitle {
+  font-family: "Kalam", cursive;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink-navy);
+  line-height: 1.35;
+}
+
+.nodeCheck {
+  position: absolute;
+  right: -8px;
+  top: -12px;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.nodeSub {
+  font-family: "Kalam", cursive;
+  font-size: 16px;
+  color: var(--ink-black);
+  margin-top: 10px;
+}
+
+.nodeSelfArrow {
+  position: absolute;
+  left: -40px;
+  top: 30px;
+  width: 60px;
+  height: 70px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* ----------------------------------------------------------------
+   Node todos  .node__todos / .node__todos-lbl → .nodeTodos / .nodeTodosLbl …
+   ---------------------------------------------------------------- */
+.nodeTodos {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(30, 58, 95, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.nodeTodosLbl {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink-red);
+  line-height: 1;
+  margin-bottom: 2px;
+  letter-spacing: 0.01em;
+}
+
+.nodeTodo {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-family: "Kalam", cursive;
+  font-size: 14.5px;
+  color: var(--ink-navy);
+  line-height: 1.35;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  padding: 2px 0;
+  text-align: left;
+  width: 100%;
+  font-weight: 400;
+  position: relative;
+}
+
+.nodeTodoBox {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  position: relative;
+}
+
+.nodeTodoBox svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.nodeTodoTxt {
+  flex: 1 1 auto;
+  position: relative;
+  padding: 0 2px;
+}
+
+/* .node__todo--done → .nodeTodoDone */
+.nodeTodoDone .nodeTodoTxt {
+  color: var(--ink-muted);
+}
+
+.nodeTodoStrike {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 50%;
+  height: 8px;
+  transform: translateY(-50%);
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.nodeTodoDone .nodeTodoStrike {
+  opacity: 1;
+}
+
+.nodeTodo:hover .nodeTodoBox svg {
+  transform: scale(1.08);
+  transition: transform 120ms;
+}
+
+/* ----------------------------------------------------------------
+   Prompt  .prompt / .prompt__shape → .prompt / .promptShape …
+   ---------------------------------------------------------------- */
+.prompt {
+  position: relative;
+  width: 92%;
+  max-width: 420px;
+  padding: 16px 22px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: "Kalam", cursive;
+  transform: rotate(var(--rot, 0deg));
+  transition: transform 160ms;
+}
+
+.prompt:hover {
+  transform: rotate(var(--rot, 0deg)) translateY(-1px);
+}
+
+.promptShape {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.promptInner {
+  position: relative;
+  z-index: 1;
+}
+
+.promptEyebrow {
+  font-family: "Kalam", cursive;
+  font-size: 13px;
+  color: var(--ink-red);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.promptTitle {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 24px;
+  color: var(--ink-navy);
+  line-height: 1.1;
+}
+
+.promptCta {
+  margin-top: 6px;
+  font-family: "Kalam", cursive;
+  font-size: 14px;
+  color: var(--ink-red);
+  font-style: italic;
+}
+
+/* ----------------------------------------------------------------
+   Choices  .choices / .choices__shape → .choices / .choicesShape …
+   ---------------------------------------------------------------- */
+.choices {
+  position: relative;
+  width: 94%;
+  max-width: 460px;
+  padding: 18px 22px 20px;
+  background: transparent;
+  transform: rotate(var(--rot, 0deg));
+  opacity: 1;
+  animation: choices-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.choicesShape {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.choicesInner {
+  position: relative;
+  z-index: 1;
+}
+
+.choicesHd {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink-red);
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  position: relative;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.choicesHdUnderline {
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 130px;
+  height: 14px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.choicesClose {
+  background: none;
+  border: 0;
+  font-family: "Caveat", cursive;
+  color: var(--ink-muted);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  position: relative;
+}
+
+.choicesClose svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.choice {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 10px 8px 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: "Kalam", cursive;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--ink-navy);
+  line-height: 1.4;
+  width: 100%;
+  transition: transform 140ms;
+}
+
+.choice:hover {
+  transform: translateX(2px);
+}
+
+.choiceBox {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  position: relative;
+  margin-top: 2px;
+}
+
+.choiceBox svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.choiceText {
+  flex: 1;
+  position: relative;
+}
+
+.choiceHighlight {
+  position: absolute;
+  inset: -2px -6px;
+  pointer-events: none;
+  z-index: -1;
+  overflow: visible;
+  opacity: 0;
+  transition: opacity 160ms;
+}
+
+.choice:hover .choiceHighlight {
+  opacity: 1;
+}
+
+.choiceSelected .choiceHighlight {
+  opacity: 1;
+}
+
+.choiceSelected .choiceText {
+  font-weight: 700;
+}
+
+/* ----------------------------------------------------------------
+   Panel empty  .panel__empty → .panelEmpty …
+   ---------------------------------------------------------------- */
+.panelEmpty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 40px;
+  text-align: center;
+  gap: 16px;
+  font-family: "Kalam", cursive;
+}
+
+.panelEmptyArrow {
+  width: 80px;
+  height: 80px;
+  opacity: 0.6;
+  color: var(--ink-red);
+  overflow: visible;
+}
+
+.panelEmptyTtl {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 32px;
+  color: var(--ink-navy);
+  line-height: 1.1;
+}
+
+.panelEmptySub {
+  font-size: 16px;
+  max-width: 28ch;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* ----------------------------------------------------------------
+   Panel  .panel / .panel__kicker → .panel / .panelKicker …
+   ---------------------------------------------------------------- */
+.panel {
+  padding: 32px 40px 40px;
+  animation: panel-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  font-family: "Kalam", cursive;
+}
+
+.panelKicker {
+  font-family: "Kalam", cursive;
+  font-size: 14px;
+  color: var(--ink-red);
+  font-style: italic;
+  margin-bottom: 6px;
+}
+
+.panelTtl {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 38px;
+  color: var(--ink-navy);
+  line-height: 1.05;
+  margin-bottom: 6px;
+  position: relative;
+  display: inline-block;
+  padding-bottom: 8px;
+}
+
+.panelTtlUnderline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 14px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.panelMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0 22px;
+  padding: 14px 16px 14px 18px;
+  background: rgba(253, 245, 220, 0.55);
+  border-left: 3px solid var(--ink-red);
+  border-radius: 2px;
+  position: relative;
+}
+
+.panelMetaRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-family: "Kalam", cursive;
+  font-size: 15px;
+  color: var(--ink-black);
+  line-height: 1.35;
+}
+
+.panelMetaRowIcon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.panelMetaRowLbl {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  color: var(--ink-red);
+  font-size: 17px;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.panelMetaRowVal {
+  color: var(--ink-navy);
+  flex: 1 1 auto;
+}
+
+.panelMetaRowUrgent .panelMetaRowVal {
+  color: var(--ink-red);
+  font-weight: 700;
+}
+
+.panelSect {
+  margin-bottom: 22px;
+}
+
+.panelSectLbl {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink-red);
+  margin-bottom: 8px;
+  line-height: 1;
+  display: inline-block;
+  position: relative;
+}
+
+.panelWhy {
+  font-family: "Kalam", cursive;
+  font-size: 17px;
+  color: var(--ink-black);
+  line-height: 1.55;
+  padding: 4px 0;
+  position: relative;
+}
+
+.panelWhy::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--ink-red);
+  opacity: 0.5;
+}
+
+.panelBody {
+  font-family: "Kalam", cursive;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-black);
+}
+
+.panelCites {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panelCite {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-family: "Kalam", cursive;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.panelCiteSup {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  color: var(--ink-red);
+  flex: 0 0 auto;
+  min-width: 20px;
+  font-size: 18px;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.panelCiteBody {
+  color: var(--ink-black);
+}
+
+.panelCiteBody strong {
+  color: var(--ink-navy);
+  font-weight: 700;
+}
+
+.panelCiteBody a {
+  color: var(--ink-navy);
+  text-decoration: underline;
+  text-decoration-color: var(--ink-red);
+  text-underline-offset: 3px;
+}
+
+.panelCiteBody a:hover {
+  color: var(--ink-red);
+}
+
+/* ----------------------------------------------------------------
+   Panel actions + buttons  .panel__actions → .panelActions …
+   ---------------------------------------------------------------- */
+.panelActions {
+  display: flex;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.btn {
+  flex: 1;
+  padding: 10px 18px;
+  background: transparent;
+  border: 0;
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink-navy);
+  cursor: pointer;
+  position: relative;
+  line-height: 1;
+  transform: rotate(var(--rot, 0deg));
+  transition: transform 140ms;
+}
+
+.btn:hover {
+  transform: rotate(var(--rot, 0deg)) translateY(-1px);
+}
+
+.btnShape {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+.btnLabel {
+  position: relative;
+  z-index: 1;
+}
+
+.btnPrimary .btnLabel {
+  color: var(--ink-red);
+}
+
+.btnGhost .btnLabel {
+  color: var(--ink-muted);
+}
+
+/* ----------------------------------------------------------------
+   Reopen warning  .reopen-warn → .reopenWarn
+   ---------------------------------------------------------------- */
+.reopenWarn {
+  margin-top: 14px;
+  font-family: "Kalam", cursive;
+  font-size: 14px;
+  color: var(--ink-red);
+  font-style: italic;
+  padding: 8px 0 8px 16px;
+  border-left: 2px solid var(--ink-red);
+}
+
+/* ----------------------------------------------------------------
+   Draw-on animation  .rough-draw → .roughDraw
+   ---------------------------------------------------------------- */
+.roughDraw path {
+  stroke-dasharray: 800;
+  stroke-dashoffset: 800;
+  animation: draw-on 500ms ease-out forwards;
+}
+
+.roughDraw path:nth-child(2) {
+  animation-delay: 80ms;
+}
+
+.roughDraw path:nth-child(3) {
+  animation-delay: 160ms;
+}
+
+.roughDraw path:nth-child(4) {
+  animation-delay: 240ms;
+}
+
+/* ----------------------------------------------------------------
+   Sticky note  .sticky / .sticky--dropping → .sticky / .stickyDropping …
+   ---------------------------------------------------------------- */
+.sticky {
+  position: absolute;
+  width: 196px;
+  min-height: 168px;
+  padding: 26px 18px 20px;
+  background: #fef3a2;
+  color: #1e3a5f;
+  font-family: "Kalam", cursive;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow:
+    0 10px 24px -8px rgba(60, 45, 20, 0.28),
+    0 6px 12px -4px rgba(60, 45, 20, 0.18),
+    0 2px 4px rgba(60, 45, 20, 0.1),
+    inset 2px 2px 6px rgba(255, 255, 255, 0.35),
+    inset -6px -8px 14px -8px rgba(180, 150, 60, 0.22);
+  transform: rotate(var(--note-rot, 0deg));
+  z-index: 5;
+  pointer-events: none;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.15 0 0 0 0 0.05 0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 140px 140px;
+  background-blend-mode: multiply;
+}
+
+/* Tape strip across top */
+.sticky::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  width: 88px;
+  height: 26px;
+  transform: translateX(-50%) rotate(var(--tape-rot, -2deg));
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.38) 0%,
+      rgba(255, 255, 255, 0.62) 40%,
+      rgba(245, 240, 220, 0.55) 100%
+    );
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(180, 170, 140, 0.25);
+  box-shadow:
+    0 2px 3px rgba(60, 45, 20, 0.18),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.3);
+  mask-image: linear-gradient(90deg, transparent 0, #000 5px, #000 calc(100% - 5px), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 5px, #000 calc(100% - 5px), transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Bottom-right corner curl */
+.sticky::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 32px;
+  height: 32px;
+  background:
+    radial-gradient(
+      circle at 0% 0%,
+      rgba(0, 0, 0, 0) 58%,
+      rgba(60, 45, 20, 0.12) 70%,
+      rgba(60, 45, 20, 0.28) 85%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(254, 243, 162, 0) 48%,
+      #fbe87f 50%,
+      #e8c955 85%,
+      #b8991f 100%
+    );
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Text layer — masked reveal during "write" phase */
+.stickyTxt {
+  position: relative;
+  display: block;
+  -webkit-mask-image: linear-gradient(90deg, #000 var(--write, 100%), transparent var(--write, 100%));
+  mask-image: linear-gradient(90deg, #000 var(--write, 100%), transparent var(--write, 100%));
+  color: #1e3a5f;
+}
+
+.stickyKicker {
+  display: block;
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 18px;
+  color: #c94c3a;
+  line-height: 1;
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.stickySigned {
+  display: block;
+  margin-top: 10px;
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  font-size: 20px;
+  color: #c94c3a;
+  transform: rotate(-3deg);
+  opacity: var(--signed-opacity, 0);
+  transition: opacity 220ms ease-out;
+}
+
+/* Animation sequence for sticky drop */
+.stickyDropping {
+  animation:
+    sticky-drop 450ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+    sticky-wobble 80ms ease-in-out 450ms 1;
+}
+
+.stickyDropping .stickyTxt {
+  animation: sticky-write 400ms ease-out 730ms forwards;
+}
+
+.stickyDropping .stickySigned {
+  animation: sticky-sign 220ms ease-out 980ms forwards;
+}
+
+/* Resting state */
+.sticky:not(.stickyDropping) .stickyTxt {
+  --write: 100%;
+}
+
+.sticky:not(.stickyDropping) .stickySigned {
+  --signed-opacity: 1;
+}
+
+/* ----------------------------------------------------------------
+   Keyframes
+   ---------------------------------------------------------------- */
+@keyframes choices-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) rotate(var(--rot, 0deg));
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--rot, 0deg));
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes draw-on {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sticky-drop {
+  0% {
+    transform: translateY(-60px) rotate(var(--note-rot, 0deg)) scale(1.08);
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) rotate(var(--note-rot, 0deg)) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes sticky-wobble {
+  0% {
+    transform: translateY(0) rotate(calc(var(--note-rot, 0deg) + 2deg)) scale(1);
+  }
+  100% {
+    transform: translateY(0) rotate(var(--note-rot, 0deg)) scale(1);
+  }
+}
+
+@keyframes sticky-write {
+  from {
+    --write: 0%;
+  }
+  to {
+    --write: 100%;
+  }
+}
+
+@keyframes sticky-sign {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sticky-fade {
+  from {
+    opacity: 0;
+    transform: rotate(var(--note-rot, 0deg)) scale(1);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--note-rot, 0deg)) scale(1);
+  }
+}
+
+/* ----------------------------------------------------------------
+   Reduced-motion branch
+   ---------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .stickyDropping {
+    animation: sticky-fade 280ms ease-out forwards;
+  }
+
+  .stickyDropping .stickyTxt {
+    animation: none;
+    --write: 100%;
+  }
+
+  .stickyDropping .stickySigned {
+    animation: none;
+    opacity: 1;
+  }
+}
