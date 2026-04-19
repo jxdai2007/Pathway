@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Pathway — onboarding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink-navy: #1e3a5f;
+    --ink-black: #2a2a28;
+    --ink-red: #c94c3a;
+    --ink-muted: #6b6658;
+    --highlighter: rgba(244, 211, 94, 0.42);
+    --paper: #fdfaf0;
+    --paper-edge: #ebe3cc;
+    --rule-blue: #b8c8d8;
+    --margin-red: #c94c3a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #d8d2c0;
+    font-family: "Kalam", "Segoe Print", "Comic Sans MS", cursive;
+    color: var(--ink-black);
+    line-height: 1.55;
+    font-size: 19px;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ============================================================
+     One paper page, full viewport. No flip, no spread. Arrow keys
+     switch between pages. The page itself is always the same
+     element — content swaps in on change.
+     ============================================================ */
+  .stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+  .page {
+    position: absolute;
+    inset: 0;
+    background-color: var(--paper);
+    /* ruled-notebook ground + subtle noise */
+    background-image:
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 31px,
+        var(--rule-blue) 31px,
+        var(--rule-blue) 32px
+      ),
+      linear-gradient(90deg, transparent 140px, var(--margin-red) 140px, var(--margin-red) 142px, transparent 142px),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.84 0 0 0 0 0.78 0 0 0 0 0.55 0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-blend-mode: normal, normal, multiply;
+    box-shadow: 0 18px 50px rgba(30,58,95,0.18);
+    overflow: hidden;
+  }
+  .page::after {
+    /* edge vignette */
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 80% at 50% 50%, transparent 50%, rgba(80, 60, 30, 0.08) 100%);
+    pointer-events: none;
+  }
+
+  /* Body container sits inside the page, respecting the margin rule */
+  .page__body {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    padding: 80px 80px 120px 190px; /* 190px to clear the red margin line */
+    display: grid;
+    grid-template-columns: minmax(340px, 1fr) minmax(340px, 1fr);
+    gap: 80px;
+    align-content: start;
+    max-width: 1200px;
+    margin: 0 auto;
+    transition: opacity 220ms ease;
+  }
+  .page.is-leaving .page__body { opacity: 0; }
+  .page.is-entering .page__body {
+    opacity: 0;
+    animation: pageIn 360ms 40ms cubic-bezier(.2,.65,.25,1) forwards;
+  }
+  @keyframes pageIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Single-column layout for spreads that don't have a right-side input (welcome / review-ish) */
+  .page__body--single {
+    grid-template-columns: minmax(400px, 720px);
+    justify-content: center;
+  }
+
+  /* ============================================================
+     Typography
+     ============================================================ */
+  .q-kicker {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--ink-red);
+    letter-spacing: 0.02em;
+    margin-bottom: 10px;
+  }
+  .q-title {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 62px;
+    color: var(--ink-navy);
+    line-height: 1.02;
+    margin-bottom: 14px;
+    display: inline-block;
+    position: relative;
+  }
+  .q-title--sm { font-size: 52px; }
+  .q-ul {
+    position: absolute;
+    left: 2px;
+    bottom: -8px;
+    width: 100%;
+    height: 16px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .q-body {
+    font-family: "Kalam", cursive;
+    font-size: 18px;
+    color: var(--ink-black);
+    max-width: 460px;
+    margin-top: 6px;
+  }
+  .q-body p + p { margin-top: 10px; }
+
+  /* Right-column kicker */
+  .a-kicker {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--ink-muted);
+    margin-bottom: 14px;
+    font-style: italic;
+  }
+  .a-area {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 8px;
+  }
+
+  /* ============================================================
+     Form primitives
+     ============================================================ */
+  .ink-input, .ink-textarea {
+    font-family: "Kalam", cursive;
+    font-weight: 400;
+    font-size: 28px;
+    color: var(--ink-navy);
+    background: transparent;
+    border: none;
+    border-bottom: 1.5px dashed rgba(30, 58, 95, 0.38);
+    outline: none;
+    width: 100%;
+    max-width: 480px;
+    padding: 6px 4px 10px;
+    line-height: 1.4;
+  }
+  .ink-input:focus, .ink-textarea:focus { border-bottom-color: var(--ink-red); }
+  .ink-input::placeholder, .ink-textarea::placeholder {
+    color: rgba(30, 58, 95, 0.3);
+    font-style: italic;
+  }
+  .ink-textarea {
+    resize: none;
+    min-height: 140px;
+    border: 1.5px dashed rgba(30, 58, 95, 0.38);
+    border-radius: 4px;
+    padding: 14px 16px;
+    max-width: 540px;
+    font-size: 20px;
+    line-height: 1.55;
+  }
+  .ink-textarea:focus { border-color: var(--ink-red); }
+
+  .pill-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 10px;
+    margin-top: 4px;
+    max-width: 540px;
+  }
+  .pill {
+    font-family: "Kalam", cursive;
+    font-size: 17px;
+    color: var(--ink-navy);
+    background: transparent;
+    border: 1.5px solid var(--ink-muted);
+    border-radius: 22px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: transform 140ms, background 140ms, border-color 140ms, color 140ms;
+    user-select: none;
+  }
+  .pill:hover { border-color: var(--ink-navy); transform: translateY(-1px); }
+  .pill.is-selected {
+    background: var(--ink-navy);
+    color: var(--paper);
+    border-color: var(--ink-navy);
+    transform: rotate(-1.2deg);
+    box-shadow: 2px 3px 0 rgba(30, 58, 95, 0.18);
+  }
+
+  .slider {
+    -webkit-appearance: none;
+    width: 100%;
+    max-width: 480px;
+    height: 3px;
+    background: repeating-linear-gradient(to right, var(--ink-muted) 0, var(--ink-muted) 4px, transparent 4px, transparent 8px);
+    outline: none;
+    cursor: pointer;
+    border: none;
+  }
+  .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px;
+    background: var(--ink-red); border: 2px solid var(--paper); border-radius: 50%; cursor: pointer; }
+  .slider::-moz-range-thumb { width: 24px; height: 24px; background: var(--ink-red);
+    border: 2px solid var(--paper); border-radius: 50%; cursor: pointer; }
+  .slider-val {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 40px;
+    color: var(--ink-navy);
+    margin-top: 8px;
+    display: inline-block;
+    transform: rotate(-2deg);
+  }
+  .slider-ticks {
+    display: flex; justify-content: space-between; max-width: 480px;
+    font-family: "Kalam", cursive; font-size: 13px; color: var(--ink-muted); margin-top: 4px;
+  }
+
+  .field__hint {
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-muted);
+    font-style: italic;
+    margin-top: 6px;
+  }
+
+  /* Review list */
+  .review-list { display: grid; grid-template-columns: 1fr; gap: 8px; max-width: 540px; }
+  .review-row {
+    display: grid; grid-template-columns: 110px 1fr auto; align-items: baseline; gap: 10px;
+    padding: 6px 0; border-bottom: 1px dashed rgba(30, 58, 95, 0.15);
+  }
+  .review-lbl { font-family: "Caveat", cursive; font-weight: 700; font-size: 20px; color: var(--ink-red); }
+  .review-val { font-family: "Kalam", cursive; font-size: 17px; color: var(--ink-navy); }
+  .review-val em { color: rgba(30, 58, 95, 0.45); font-style: italic; }
+  .review-edit {
+    font-family: "Caveat", cursive; font-weight: 700; font-size: 17px; color: var(--ink-red);
+    background: transparent; border: none; cursor: pointer; padding: 2px 8px; border-radius: 4px;
+    opacity: 0.55; transition: opacity 140ms;
+  }
+  .review-edit:hover { opacity: 1; text-decoration: underline; }
+
+  /* ============================================================
+     Corner nav — hand-drawn back/next. Keyboard arrows also work.
+     ============================================================ */
+  .corner {
+    position: absolute;
+    bottom: 28px;
+    z-index: 10;
+    cursor: pointer;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    color: var(--ink-navy);
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 14px;
+    transition: transform 160ms, color 160ms;
+    background: transparent;
+    border: none;
+  }
+  .corner:hover { transform: translateY(-1px) rotate(-1.5deg); color: var(--ink-red); }
+  .corner:disabled { opacity: 0.22; cursor: not-allowed; pointer-events: none; }
+  .corner--back { left: 36px; }
+  .corner--next { right: 36px; }
+  .corner__svg { width: 64px; height: 40px; overflow: visible; }
+  .corner__lbl { font-size: 22px; }
+  .corner--next .corner__lbl { margin-right: 8px; }
+  .corner--back .corner__lbl { margin-left: 8px; }
+  .corner--primary { color: var(--ink-red); }
+  .corner--primary .corner__lbl { font-size: 28px; }
+
+  /* Small page counter at the bottom center */
+  .stage__counter {
+    position: absolute;
+    bottom: 12px; left: 0; right: 0;
+    text-align: center;
+    font-family: "Kalam", cursive;
+    font-size: 12px;
+    color: var(--ink-muted);
+    font-style: italic;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Keyboard hint, top-right */
+  .kbd-hint {
+    position: absolute;
+    top: 22px; right: 36px;
+    font-family: "Caveat", cursive;
+    color: var(--ink-muted);
+    font-size: 16px;
+    font-style: italic;
+    z-index: 2;
+  }
+  .kbd-hint kbd {
+    font-family: inherit;
+    background: rgba(30, 58, 95, 0.08);
+    border: 1px solid rgba(30, 58, 95, 0.2);
+    border-radius: 3px;
+    padding: 0 6px;
+    font-size: 15px;
+    color: var(--ink-navy);
+    margin: 0 2px;
+  }
+
+  /* Intro stamp flourish (welcome only) */
+  .welcome-stamp {
+    position: absolute;
+    right: 60px;
+    top: 120px;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    color: var(--ink-red);
+    font-size: 28px;
+    transform: rotate(8deg);
+    border: 2px solid var(--ink-red);
+    padding: 6px 12px;
+    border-radius: 4px;
+    opacity: 0.75;
+    z-index: 2;
+  }
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     ONBOARDING — one page at a time, arrow-key navigation
+     ========================================================= -->
+<div class="stage">
+  <div class="kbd-hint">use <kbd>←</kbd> <kbd>→</kbd> to navigate</div>
+  <div class="page" id="page">
+    <div class="page__body" id="page-body"></div>
+  </div>
+
+  <button class="corner corner--back" id="back-btn" aria-label="back">
+    <svg class="corner__svg" viewBox="0 0 64 40">
+      <path id="arrow-back" d="" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span class="corner__lbl">back</span>
+  </button>
+  <button class="corner corner--next corner--primary" id="next-btn" aria-label="next">
+    <span class="corner__lbl" id="next-lbl">next</span>
+    <svg class="corner__svg" viewBox="0 0 64 40">
+      <path id="arrow-next" d="" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </button>
+
+  <div class="stage__counter" id="nav-counter">page 1 of 9</div>
+</div>
+
+<!-- =========================================================
+     Freehand path helpers — title underlines + corner arrows
+     ========================================================= -->
+<script>
+function freehandUnderlinePath(width, seed = 1) {
+  const n = Math.max(20, Math.floor(width / 8));
+  const amp = 1.8;
+  let s = seed || 1;
+  function rnd() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
+  let d = '';
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = 3 + t * (width - 6);
+    const jitter = (rnd() - 0.5) * amp;
+    const taper = Math.sin(t * Math.PI);
+    const y = 6 + jitter * taper;
+    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+  }
+  return d;
+}
+function freehandArrow(dir) {
+  if (dir === 'right') {
+    return 'M4 20 Q18 17.5 30 20.2 T56 20.4 M48 12 Q53 18 56 20.4 Q53 22 48 28';
+  }
+  return 'M60 20 Q46 17.5 34 20.2 T8 20.4 M16 12 Q11 18 8 20.4 Q11 22 16 28';
+}
+</script>
+
+<!-- =========================================================
+     App
+     ========================================================= -->
+<script>
+// --- Persistence
+const STORE_KEY = 'pathway.onboarding.v3';
+const defaultAnswers = {
+  name: '', year: '', majorStatus: '',
+  interests: [], background: [],
+  hoursPerWeek: 8,
+  why: '',
+};
+function loadAnswers() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return { ...defaultAnswers };
+    return { ...defaultAnswers, ...JSON.parse(raw) };
+  } catch (_) { return { ...defaultAnswers }; }
+}
+function saveAnswers(a) { try { localStorage.setItem(STORE_KEY, JSON.stringify(a)); } catch (_) {} }
+
+const state = {
+  answers: loadAnswers(),
+  pageIdx: 0,
+};
+
+const YEARS      = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Grad'];
+const MAJORS     = ['Declared · CS', 'Declared · other STEM', 'Declared · non-STEM', 'Undeclared', 'Exploring'];
+const INTERESTS  = ['AI / ML', 'Web & mobile', 'Systems', 'Data science', 'Design / HCI', 'Research', 'Founding / startup', 'Teaching', 'Security'];
+const BACKGROUND = ['First-gen', 'Transfer', 'International', 'Pre-med', 'Pre-law', 'Athlete', 'Working 10+ hrs/week', 'Caretaker at home'];
+
+function escapeAttr(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+// ============================================================
+// PAGES — single-column (welcome / review / final) or two-column
+// (question on the left, answer on the right)
+// ============================================================
+const PAGES = [
+  {
+    id: 'welcome',
+    single: true,
+    render: () => `
+      <div>
+        <div class="q-kicker">a working notebook · intro</div>
+        <h1 class="q-title">Let's figure out<br/>your pathway.<svg class="q-ul" data-ul-seed="1"></svg></h1>
+        <div class="q-body" style="margin-top:22px;max-width:600px">
+          <p style="font-family:'Caveat',cursive;font-size:28px;color:var(--ink-navy);line-height:1.2;">Seven quick questions.<br/>Then we build your plan.</p>
+          <p style="margin-top:20px">I'll turn your answers into a 5-stage plan — direction, community, signal, summer, year-2 capstone. Everything lives in this notebook.</p>
+          <p style="margin-top:18px;color:var(--ink-muted);font-style:italic;">no login. no email. answers save to this device.</p>
+        </div>
+        <div class="welcome-stamp">draft · v1</div>
+      </div>`,
+    wire: () => {},
+    validate: () => true,
+  },
+  {
+    id: 'name',
+    render: () => `
+      <div>
+        <div class="q-kicker">01 · quick intro</div>
+        <h1 class="q-title">What should<br/>I call you?<svg class="q-ul" data-ul-seed="2"></svg></h1>
+        <div class="q-body"><p>A first name is fine. It'll show up in the marginalia on your plan.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">your name →</div>
+        <div class="a-area">
+          <input class="ink-input" type="text" id="q-name"
+                 placeholder="e.g. Maya" value="${escapeAttr(state.answers.name)}"
+                 autocomplete="off" spellcheck="false"/>
+          <div class="field__hint">stored on this device only.</div>
+        </div>
+      </div>`,
+    wire: () => {
+      const el = document.getElementById('q-name');
+      if (!el) return;
+      el.addEventListener('input', () => { state.answers.name = el.value.trim(); saveAnswers(state.answers); updateNav(); });
+      el.addEventListener('keydown', handleInputKeys);
+      setTimeout(() => el.focus(), 120);
+    },
+    validate: () => !!state.answers.name,
+  },
+  {
+    id: 'year',
+    render: () => `
+      <div>
+        <div class="q-kicker">02 · where are you</div>
+        <h1 class="q-title">What year<br/>are you?<svg class="q-ul" data-ul-seed="3"></svg></h1>
+        <div class="q-body"><p>Changes what stages are live — freshmen see the year-2 capstone, seniors get a shorter runway.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">pick one →</div>
+        <div class="a-area">
+          <div class="pill-group" data-pill-group="year">
+            ${YEARS.map(y => `<button class="pill ${state.answers.year === y ? 'is-selected' : ''}" data-val="${y}">${y}</button>`).join('')}
+          </div>
+        </div>
+      </div>`,
+    wire: () => wirePillGroup('year', false),
+    validate: () => !!state.answers.year,
+  },
+  {
+    id: 'major',
+    render: () => `
+      <div>
+        <div class="q-kicker">03 · direction</div>
+        <h1 class="q-title">Major status?<svg class="q-ul" data-ul-seed="4"></svg></h1>
+        <div class="q-body"><p>Decides whether Stage 1 on your plan is "declare" vs. "explore." Be honest — you can change this later.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">pick one →</div>
+        <div class="a-area">
+          <div class="pill-group" data-pill-group="majorStatus">
+            ${MAJORS.map(m => `<button class="pill ${state.answers.majorStatus === m ? 'is-selected' : ''}" data-val="${escapeAttr(m)}">${m}</button>`).join('')}
+          </div>
+        </div>
+      </div>`,
+    wire: () => wirePillGroup('majorStatus', false),
+    validate: () => !!state.answers.majorStatus,
+  },
+  {
+    id: 'interests',
+    render: () => `
+      <div>
+        <div class="q-kicker">04 · what pulls you</div>
+        <h1 class="q-title q-title--sm">Which of these<br/>sound like you?<svg class="q-ul" data-ul-seed="5"></svg></h1>
+        <div class="q-body"><p>Pick <strong>up to 3</strong>. These drive which clubs, labs, and summer options surface on your plan.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">select up to 3 →</div>
+        <div class="a-area">
+          <div class="pill-group" data-pill-group="interests" data-multi="1" data-max="3">
+            ${INTERESTS.map(x => `<button class="pill ${state.answers.interests.includes(x) ? 'is-selected' : ''}" data-val="${escapeAttr(x)}">${x}</button>`).join('')}
+          </div>
+          <div class="field__hint" id="interests-hint">${state.answers.interests.length}/3 selected.</div>
+        </div>
+      </div>`,
+    wire: () => wirePillGroup('interests', true, 3, () => {
+      const h = document.getElementById('interests-hint');
+      if (h) h.textContent = `${state.answers.interests.length}/3 selected.`;
+    }),
+    validate: () => state.answers.interests.length > 0,
+  },
+  {
+    id: 'background',
+    render: () => `
+      <div>
+        <div class="q-kicker">05 · context</div>
+        <h1 class="q-title q-title--sm">Anything I should<br/>factor in?<svg class="q-ul" data-ul-seed="6"></svg></h1>
+        <div class="q-body"><p>Optional. These unlock specific programs — AAP peer learning, first-gen-only grants, transfer orientation, etc.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">select any →</div>
+        <div class="a-area">
+          <div class="pill-group" data-pill-group="background" data-multi="1">
+            ${BACKGROUND.map(x => `<button class="pill ${state.answers.background.includes(x) ? 'is-selected' : ''}" data-val="${escapeAttr(x)}">${x}</button>`).join('')}
+          </div>
+          <div class="field__hint">feel free to skip — you can add later.</div>
+        </div>
+      </div>`,
+    wire: () => wirePillGroup('background', true, 99),
+    validate: () => true,
+  },
+  {
+    id: 'hours',
+    render: () => `
+      <div>
+        <div class="q-kicker">06 · reality check</div>
+        <h1 class="q-title q-title--sm">Hours per week<br/>for extras?<svg class="q-ul" data-ul-seed="7"></svg></h1>
+        <div class="q-body"><p>After classes, studying, job, sleep. What's actually left for clubs, research, and side projects.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">drag the slider →</div>
+        <div class="a-area">
+          <input class="slider" id="q-hours" type="range" min="0" max="30" step="1" value="${state.answers.hoursPerWeek}"/>
+          <div class="slider-ticks" style="max-width:480px">
+            <span>0</span><span>10</span><span>20</span><span>30+</span>
+          </div>
+          <div><span class="slider-val" id="q-hours-val">${state.answers.hoursPerWeek} hrs / week</span></div>
+          <div class="field__hint">this paces the number of commitments per stage.</div>
+        </div>
+      </div>`,
+    wire: () => {
+      const el = document.getElementById('q-hours');
+      const lbl = document.getElementById('q-hours-val');
+      if (!el) return;
+      el.addEventListener('input', () => {
+        state.answers.hoursPerWeek = parseInt(el.value, 10);
+        if (lbl) lbl.textContent = `${el.value} hrs / week`;
+        saveAnswers(state.answers);
+      });
+    },
+    validate: () => true,
+  },
+  {
+    id: 'why',
+    render: () => `
+      <div>
+        <div class="q-kicker">07 · freeform</div>
+        <h1 class="q-title q-title--sm">What pulls you<br/>to this?<svg class="q-ul" data-ul-seed="8"></svg></h1>
+        <div class="q-body"><p>A sentence or two. This shows up in the "Why this fits you" block on each stage card.</p></div>
+      </div>
+      <div>
+        <div class="a-kicker">a line or two →</div>
+        <div class="a-area">
+          <textarea class="ink-textarea" id="q-why" rows="5"
+            placeholder="e.g. ML and making stuff that thinks is what pulls me in."
+            spellcheck="false">${escapeAttr(state.answers.why)}</textarea>
+        </div>
+      </div>`,
+    wire: () => {
+      const el = document.getElementById('q-why');
+      if (!el) return;
+      el.addEventListener('input', () => { state.answers.why = el.value; saveAnswers(state.answers); });
+    },
+    validate: () => true,
+  },
+  {
+    id: 'review',
+    single: true,
+    isLast: true,
+    render: () => {
+      const a = state.answers;
+      const row = (lbl, val, goto) => `
+        <div class="review-row">
+          <span class="review-lbl">${lbl}</span>
+          <span class="review-val">${val || '<em>— skipped —</em>'}</span>
+          <button class="review-edit" data-goto="${goto}">✎ edit</button>
+        </div>`;
+      return `
+        <div>
+          <div class="q-kicker">last look · review</div>
+          <h1 class="q-title q-title--sm">Does this<br/>sound like you?<svg class="q-ul" data-ul-seed="9"></svg></h1>
+          <div class="q-body" style="max-width:600px">
+            <p>Tap ✎ to hop back and edit anything. When it reads right, hit <strong style="color:var(--ink-red)">build my plan →</strong>.</p>
+          </div>
+          <div class="review-list" style="margin-top:28px">
+            ${row('Name',     escapeAttr(a.name), 'name')}
+            ${row('Year',     escapeAttr(a.year), 'year')}
+            ${row('Major',    escapeAttr(a.majorStatus), 'major')}
+            ${row('Interests',a.interests.length ? escapeAttr(a.interests.join(' · ')) : '', 'interests')}
+            ${row('Context',  a.background.length ? escapeAttr(a.background.join(' · ')) : '', 'background')}
+            ${row('Hours',    `${a.hoursPerWeek} hrs / week`, 'hours')}
+            ${row('Why',      escapeAttr(a.why), 'why')}
+          </div>
+        </div>`;
+    },
+    wire: () => {
+      document.querySelectorAll('.review-edit').forEach(b => {
+        b.addEventListener('click', () => goToPageById(b.dataset.goto));
+      });
+    },
+    validate: () => true,
+  },
+];
+
+function wirePillGroup(key, multi, max = 99, onChange) {
+  const g = document.querySelector(`[data-pill-group="${key}"]`);
+  if (!g) return;
+  g.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.val;
+      if (multi) {
+        const arr = state.answers[key];
+        const idx = arr.indexOf(v);
+        if (idx >= 0) { arr.splice(idx, 1); btn.classList.remove('is-selected'); }
+        else if (arr.length < max) { arr.push(v); btn.classList.add('is-selected'); }
+      } else {
+        state.answers[key] = v;
+        g.querySelectorAll('.pill').forEach(b => b.classList.remove('is-selected'));
+        btn.classList.add('is-selected');
+      }
+      saveAnswers(state.answers);
+      updateNav();
+      if (onChange) onChange();
+    });
+  });
+}
+
+function handleInputKeys(e) {
+  // Enter on a single-line input advances
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+    e.preventDefault();
+    tryAdvance();
+  }
+}
+
+// ============================================================
+// Render
+// ============================================================
+const pageEl     = document.getElementById('page');
+const bodyEl     = document.getElementById('page-body');
+const backBtn    = document.getElementById('back-btn');
+const nextBtn    = document.getElementById('next-btn');
+const nextLbl    = document.getElementById('next-lbl');
+const navCounter = document.getElementById('nav-counter');
+
+function renderPage() {
+  const p = PAGES[state.pageIdx];
+  bodyEl.className = 'page__body' + (p.single ? ' page__body--single' : '');
+  bodyEl.innerHTML = p.render();
+  // wire inputs
+  try { p.wire(); } catch(_) {}
+  // decorate title underlines
+  decorate(bodyEl);
+  // entry animation
+  pageEl.classList.remove('is-entering', 'is-leaving');
+  requestAnimationFrame(() => {
+    pageEl.classList.add('is-entering');
+    setTimeout(() => pageEl.classList.remove('is-entering'), 420);
+  });
+  updateNav();
+}
+
+function decorate(root) {
+  root.querySelectorAll('[data-ul-seed]').forEach(svg => {
+    const host = svg.parentElement;
+    requestAnimationFrame(() => {
+      const w = host.offsetWidth;
+      svg.setAttribute('viewBox', `0 0 ${w} 16`);
+      svg.style.width = w + 'px';
+      const d = freehandUnderlinePath(w, parseInt(svg.dataset.ulSeed, 10));
+      svg.innerHTML = `<path d="${d}" stroke="#c94c3a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>`;
+    });
+  });
+}
+
+function updateNav() {
+  const p = PAGES[state.pageIdx];
+  backBtn.disabled = state.pageIdx === 0;
+  // Next button label
+  if (p.isLast) {
+    nextLbl.textContent = 'build my plan';
+    nextBtn.classList.add('corner--primary');
+  } else if (state.pageIdx === 0) {
+    nextLbl.textContent = 'begin';
+    nextBtn.classList.add('corner--primary');
+  } else {
+    nextLbl.textContent = 'next';
+    nextBtn.classList.remove('corner--primary');
+  }
+  // Validation gate
+  nextBtn.disabled = !p.validate();
+  navCounter.textContent = `page ${state.pageIdx + 1} of ${PAGES.length}`;
+}
+
+function goToPage(idx) {
+  if (idx < 0 || idx >= PAGES.length) return;
+  if (idx === state.pageIdx) return;
+  pageEl.classList.add('is-leaving');
+  setTimeout(() => {
+    state.pageIdx = idx;
+    renderPage();
+  }, 220);
+}
+
+function goToPageById(id) {
+  const i = PAGES.findIndex(p => p.id === id);
+  if (i >= 0) goToPage(i);
+}
+
+function tryAdvance() {
+  const p = PAGES[state.pageIdx];
+  if (!p.validate()) return;
+  if (p.isLast) {
+    // Plan! Leave onboarding, open the plan view.
+    window.location.href = '/pathway';
+    return;
+  }
+  goToPage(state.pageIdx + 1);
+}
+
+function tryBack() {
+  if (state.pageIdx === 0) return;
+  goToPage(state.pageIdx - 1);
+}
+
+// Nav wiring
+backBtn.addEventListener('click', tryBack);
+nextBtn.addEventListener('click', tryAdvance);
+
+// Arrow-key navigation (unless typing into a textarea — leave those alone)
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target && e.target.tagName) || '';
+  const inTextarea = tag === 'TEXTAREA';
+  if (inTextarea) return;
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    tryAdvance();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    tryBack();
+  } else if (e.key === 'Enter' && tag !== 'TEXTAREA' && tag !== 'INPUT') {
+    e.preventDefault();
+    tryAdvance();
+  }
+});
+
+// Draw the corner arrows (one-time)
+document.getElementById('arrow-back').setAttribute('d', freehandArrow('left'));
+document.getElementById('arrow-next').setAttribute('d', freehandArrow('right'));
+
+// Start
+function firstRender() {
+  renderPage();
+}
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(firstRender);
+} else {
+  firstRender();
+}
+</script>
+
+</body>
+</html>

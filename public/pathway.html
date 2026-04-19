@@ -1,0 +1,3346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Pathway — notebook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/roughjs@4.6.6/bundled/rough.js"></script>
+<script>
+// ============================================================
+// Minimal perfect-freehand-style tapered stroke generator.
+// Returns an outline polygon around a polyline with per-point
+// pressure, tapered start/end, and slight variation.
+// ============================================================
+(function(){
+  function dist(a, b) { return Math.hypot(a[0]-b[0], a[1]-b[1]); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  // Perpendicular unit vector from a->b
+  function perp(a, b) {
+    const dx = b[0]-a[0], dy = b[1]-a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    return [-dy/len, dx/len];
+  }
+  // Resample polyline by arc length so spacing is roughly even
+  function resample(points, spacing) {
+    if (points.length < 2) return points.slice();
+    const out = [points[0]];
+    let acc = 0;
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i-1], b = points[i];
+      const d = dist(a, b);
+      let remaining = d;
+      while (acc + remaining >= spacing) {
+        const t = (spacing - acc) / d;
+        const x = lerp(a[0], b[0], (d - remaining + (spacing-acc))/d);
+        const y = lerp(a[1], b[1], (d - remaining + (spacing-acc))/d);
+        const p = lerp(a[2] ?? 0.5, b[2] ?? 0.5, (d - remaining + (spacing-acc))/d);
+        out.push([x, y, p]);
+        remaining = acc + remaining - spacing;
+        acc = 0;
+      }
+      acc += remaining;
+    }
+    out.push(points[points.length-1]);
+    return out;
+  }
+  function getStroke(points, opts = {}) {
+    const size = opts.size ?? 4;
+    const thinning = opts.thinning ?? 0.5;
+    const startTaper = (opts.start && opts.start.taper) ?? 0;
+    const endTaper   = (opts.end && opts.end.taper)   ?? 0;
+    const pts = points.map(p => Array.isArray(p) ? p : [p.x, p.y, p.pressure ?? 0.5]);
+    if (pts.length < 2) return [];
+    const rs = resample(pts, Math.max(1, size * 0.35));
+    // arc-length
+    const cum = [0];
+    for (let i = 1; i < rs.length; i++) cum.push(cum[i-1] + dist(rs[i-1], rs[i]));
+    const total = cum[cum.length-1] || 1;
+    const L = [], R = [];
+    for (let i = 0; i < rs.length; i++) {
+      const a = rs[Math.max(0, i-1)];
+      const b = rs[Math.min(rs.length-1, i+1)];
+      const n = perp(a, b);
+      const pr = rs[i][2] ?? 0.5;
+      // taper factor
+      const d = cum[i];
+      const fromStart = startTaper > 0 ? Math.min(1, d / startTaper) : 1;
+      const fromEnd = endTaper > 0 ? Math.min(1, (total - d) / endTaper) : 1;
+      const taper = Math.min(fromStart, fromEnd);
+      // thickness
+      const base = size * 0.5;
+      const pressureFactor = 1 - thinning + thinning * pr;
+      const r = base * pressureFactor * Math.pow(taper, 0.55);
+      L.push([rs[i][0] + n[0]*r, rs[i][1] + n[1]*r]);
+      R.push([rs[i][0] - n[0]*r, rs[i][1] - n[1]*r]);
+    }
+    return L.concat(R.reverse());
+  }
+  window.getStroke = getStroke;
+})();
+</script>
+<style>
+  :root {
+    /* Ink palette — notebook, not UI */
+    --ink-navy: #1e3a5f;      /* primary handwriting */
+    --ink-black: #2a2a28;     /* body */
+    --ink-red: #c94c3a;       /* red pen, emphasis, marginalia */
+    --ink-muted: #6b6658;     /* faded pencil */
+    --highlighter: rgba(244, 211, 94, 0.42); /* selected wash */
+    --paper: #fdfaf0;
+    --paper-edge: #ebe3cc;
+    --rule-blue: #b8c8d8;
+    --margin-red: #c94c3a;
+
+    /* Stage category colors — light tag bg + darker underline/count */
+    --cat-0:     #d9b3ff;  --cat-0-d:     #b27fe8;  /* Direction · purple */
+    --cat-1:     #b3d9ff;  --cat-1-d:     #6aa8e0;  /* Community · blue */
+    --cat-2:     #ffd0a0;  --cat-2-d:     #e89953;  /* Signal · orange */
+    --cat-3:     #b3f0c8;  --cat-3-d:     #5dbe87;  /* Summer · green */
+    --cat-4:     #ffb3d1;  --cat-4-d:     #e87aa8;  /* Capstone · pink */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: #d8d2c0;
+    font-family: "Kalam", "Segoe Print", "Comic Sans MS", cursive;
+    color: var(--ink-black);
+    line-height: 1.55;
+    font-size: 19px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Paper texture + ruling lines */
+  .paper-bg {
+    position: relative;
+    background-color: var(--paper);
+    background-image:
+      /* Ruling lines every 32px */
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 31px,
+        rgba(184, 200, 216, 0.45) 31px,
+        rgba(184, 200, 216, 0.45) 32px
+      );
+  }
+  /* Subtle paper grain via SVG noise */
+  .paper-bg::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.28  0 0 0 0 0.24  0 0 0 0 0.14  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 240px 240px;
+    opacity: 0.55;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Red margin line */
+  .paper-bg::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 80px;
+    width: 1.5px;
+    background: var(--margin-red);
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 1;
+    box-shadow: 0 0 2px rgba(201, 76, 58, 0.35);
+  }
+  /* Edge vignette */
+  .paper-vignette {
+    position: absolute; inset: 0;
+    box-shadow: inset 0 0 60px rgba(100, 85, 55, 0.18);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .canvas {
+    padding: 44px 40px 90px;
+    max-width: 1400px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 5;
+  }
+  .canvas__hd {
+    display: flex; align-items: baseline; gap: 16px;
+    margin-bottom: 8px; padding-left: 60px;
+  }
+  .canvas__title {
+    font-family: "Caveat", cursive;
+    font-size: 34px; font-weight: 700;
+    color: var(--ink-navy);
+    letter-spacing: 0.01em;
+    line-height: 1;
+  }
+  .canvas__sub {
+    font-family: "Kalam", cursive;
+    font-size: 16px; color: var(--ink-muted);
+    font-style: italic;
+  }
+  .canvas__hint {
+    font-family: "Kalam", cursive;
+    font-size: 15px;
+    color: var(--ink-muted);
+    margin: 6px 0 24px 60px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-style: italic;
+  }
+  .canvas__hint strong { color: var(--ink-navy); font-weight: 700; font-style: normal; }
+  .canvas__reset {
+    position: absolute;
+    top: 20px; right: 24px;
+    z-index: 6;
+    background: rgba(253, 250, 240, 0.7);
+    border: 1.5px dashed var(--ink-muted);
+    color: var(--ink-navy);
+    font-family: "Kalam", cursive;
+    padding: 4px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transform: rotate(-1deg);
+  }
+  .canvas__reset:hover { border-color: var(--ink-red); color: var(--ink-red); }
+
+  .mock { display: flex; flex-direction: column; gap: 12px; }
+  .mock__lbl {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 0 60px;
+  }
+  .mock__letter {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 40px;
+    color: var(--ink-red);
+    line-height: 1;
+    transform: rotate(-3deg);
+    display: inline-block;
+  }
+  .mock__name {
+    font-family: "Kalam", cursive;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink-navy);
+  }
+
+  .frame {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+  }
+  .frame__chrome {
+    flex: 0 0 auto; height: 52px;
+    background: rgba(253, 250, 240, 0.55);
+    backdrop-filter: blur(4px);
+    border-bottom: 1.5px solid rgba(107, 102, 88, 0.25);
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 22px;
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-muted);
+    position: relative; z-index: 3;
+  }
+  .frame__chrome__logo { width: 24px; height: 24px; color: var(--ink-navy); }
+  .frame__chrome__title {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 24px;
+    color: var(--ink-navy);
+    line-height: 1;
+  }
+  .frame__chrome__spacer { flex: 1; }
+  .frame__chrome__right {
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+
+  .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; position: relative; z-index: 3; }
+  .split__list {
+    overflow-y: auto;
+    border-right: 1.5px solid rgba(107, 102, 88, 0.2);
+    position: relative;
+  }
+  .split__list::-webkit-scrollbar { width: 8px; }
+  .split__list::-webkit-scrollbar-thumb { background: rgba(107, 102, 88, 0.3); border-radius: 4px; }
+  .split__panel {
+    overflow-y: auto;
+    position: relative;
+  }
+  .split__panel::-webkit-scrollbar { width: 8px; }
+  .split__panel::-webkit-scrollbar-thumb { background: rgba(107, 102, 88, 0.3); border-radius: 4px; }
+
+  /* Timeline — notebook list layout */
+  .tl {
+    padding: 32px 32px 60px 110px;
+    position: relative;
+    min-height: 100%;
+  }
+  /* rough.js connector gets drawn into this SVG */
+  .tl__spine-svg {
+    position: absolute;
+    left: 90px;
+    top: 40px;
+    bottom: 40px;
+    width: 40px;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .tl__row {
+    position: relative; z-index: 2;
+    margin-bottom: 6px;
+  }
+  /* Rows with a locked-in sticky need extra clearance so the sticky
+     doesn't spill into the next stage. */
+  .tl__row--has-sticky {
+    min-height: 200px;
+    margin-bottom: 20px;
+  }
+  .tl__stage-lbl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--ink-navy);
+    margin: 10px 0 4px;
+    padding: 0 4px;
+    position: relative;
+    display: inline-block;
+  }
+  /* First stage label sits right under the root "Maya · Freshman · First-gen"
+     sub line — tighten the gap so the plan starts where the intro ends. */
+  .tl__row:first-child + .tl__stage-lbl,
+  .tl > .tl__stage-lbl:nth-of-type(1) {
+    margin-top: 2px;
+  }
+  /* Marginalia layer */
+  .marginalia {
+    position: absolute;
+    left: -68px;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    color: var(--ink-red);
+    font-size: 20px;
+    line-height: 1;
+    transform-origin: center;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  /* Left-edge variant: sits just outside the left border of the stage
+     card, pointing right into it so it reads as "start here / pick one". */
+  .marginalia--right {
+    left: -118px;
+    right: auto;
+    font-size: 20px;
+  }
+
+  /* Node — handwritten label, rough.js border drawn as SVG child */
+  .node {
+    position: relative;
+    width: 92%; max-width: 420px;
+    padding: 14px 20px 16px;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    font-family: "Kalam", cursive;
+    color: var(--ink-black);
+    transition: transform 160ms;
+    transform: rotate(var(--rot, 0deg));
+  }
+  .node:hover { transform: rotate(var(--rot, 0deg)) translateY(-1px); }
+  /* Locked stage cards: lift on hover — translate up with subtle scale
+     and drop shadow. Rotation preserved so Kalam tilt still reads. */
+  .node--locked { transition: transform 180ms ease, filter 180ms ease; }
+  .node--locked:hover {
+    transform: rotate(var(--rot, 0deg)) translateY(-4px) scale(1.015);
+    filter: drop-shadow(0 10px 14px rgba(30, 58, 95, 0.18));
+  }
+  .node__shape {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: visible;
+  }
+  .node__inner { position: relative; z-index: 1; }
+
+  .node--root {
+    max-width: 460px;
+    padding: 18px 24px 6px;
+  }
+  .node--root .node__title-main {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 42px;
+    color: var(--ink-navy);
+    line-height: 1;
+    margin-bottom: 4px;
+    display: inline-block;
+  }
+  .node--root .node__sub {
+    font-family: "Kalam", cursive;
+    font-size: 16px;
+    color: var(--ink-black);
+    margin-top: 10px;
+  }
+  .node--root .node__self-arrow {
+    position: absolute;
+    left: -40px;
+    top: 30px;
+    width: 60px;
+    height: 70px;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .node--locked {
+    cursor: pointer;
+  }
+  .node--locked .node__eyebrow {
+    font-family: "Kalam", cursive;
+    font-size: 13px;
+    color: var(--ink-muted);
+    font-style: italic;
+    margin-bottom: 2px;
+  }
+  .node--locked .node__title {
+    font-family: "Kalam", cursive;
+    font-weight: 700;
+    font-size: 17px;
+    color: var(--ink-navy);
+    line-height: 1.35;
+  }
+  .node--locked .node__check {
+    position: absolute;
+    right: -8px; top: -12px;
+    width: 36px; height: 36px;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  /* Locked-node → Timeline card treatment
+     ----------------------------------------------
+     The locked node swaps its "eyebrow + title" for a card
+     styled after the My College Plan timeline: period eyebrow,
+     big title w/ category-tinted freehand underline, italic
+     description, meta row (category tag · ✓ Done · N/M tasks).
+     Uses --catL / --catD vars set inline per stage. */
+  .node--locked {
+    padding: 16px 22px 18px;
+  }
+  .node__reopen {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    display: block;
+    font-family: inherit;
+    color: inherit;
+  }
+  .node__period {
+    font-family: "Kalam", cursive;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    opacity: 0.85;
+    margin-bottom: 6px;
+  }
+  .node__title-card {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--ink-navy);
+    line-height: 1.08;
+    display: inline-block;
+    position: relative;
+    margin-bottom: 8px;
+    padding-bottom: 2px;
+  }
+  .node__title-ul {
+    position: absolute;
+    left: 0; top: 100%;
+    width: 100%;
+    height: 8px;
+    margin-top: -2px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .node__desc {
+    font-family: "Kalam", cursive;
+    font-size: 15px;
+    font-style: italic;
+    color: var(--ink-black);
+    opacity: 0.78;
+    line-height: 1.45;
+    margin-bottom: 10px;
+  }
+  .node__meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .node__tag {
+    font-family: "Kalam", cursive;
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    color: var(--ink-black);
+    background-color: var(--catL);
+    opacity: 0.92;
+  }
+  .node__status {
+    font-family: "Kalam", cursive;
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+  .node__status--done {
+    color: #1f7a45;
+  }
+  .node__status--soon {
+    color: #6b4a1f;
+  }
+  .node__status-check {
+    font-size: 15px;
+    margin-right: 2px;
+  }
+  .node__count {
+    font-family: "Kalam", cursive;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--catD);
+    opacity: 0.75;
+  }
+
+  /* Unopened PROMPT → timeline-card styling for consistency with
+     the locked-node design. Category-tinted underline + meta row. */
+  .prompt--card {
+    padding: 14px 22px 16px;
+  }
+  .prompt__period {
+    font-family: "Kalam", cursive;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    opacity: 0.85;
+    margin-bottom: 6px;
+  }
+  .prompt__title-card {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--ink-navy);
+    line-height: 1.08;
+    display: inline-block;
+    position: relative;
+    padding-bottom: 2px;
+    margin-bottom: 8px;
+  }
+  .prompt__title-ul {
+    position: absolute;
+    left: 0; top: 100%;
+    width: 100%;
+    height: 8px;
+    margin-top: -2px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .prompt__meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .prompt__tag {
+    font-family: "Kalam", cursive;
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 12px;
+    color: var(--ink-black);
+    background-color: var(--catL);
+    opacity: 0.92;
+  }
+  .prompt__status {
+    font-family: "Kalam", cursive;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+  .prompt__count {
+    font-family: "Kalam", cursive;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--catD);
+    opacity: 0.75;
+  }
+
+  /* Choice meta row — category chip + when, so the still-open stage
+     echoes the locked-card meta pattern. */
+  .choice__meta {
+    display: block;
+    margin-top: 3px;
+    font-family: "Kalam", cursive;
+    font-size: 12px;
+    color: var(--ink-muted);
+    line-height: 1.3;
+  }
+  .choice__chip {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background-color: var(--catL);
+    color: var(--ink-black);
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.85;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .choice__when {
+    font-style: italic;
+    opacity: 0.85;
+  }
+  /* Todo checklist inside a locked node */
+  .node__todos {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(30, 58, 95, 0.22);
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative;
+  }
+  .node__todos-lbl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--ink-red);
+    line-height: 1;
+    margin-bottom: 2px;
+    letter-spacing: 0.01em;
+  }
+  .node__todo {
+    display: flex; align-items: flex-start; gap: 9px;
+    font-family: "Kalam", cursive;
+    font-size: 14.5px;
+    color: var(--ink-navy);
+    line-height: 1.35;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+    padding: 2px 0;
+    text-align: left;
+    width: 100%;
+    font-weight: 400;
+    position: relative;
+  }
+  .node__todo__box {
+    flex: 0 0 auto;
+    width: 18px; height: 18px;
+    margin-top: 1px;
+    position: relative;
+  }
+  .node__todo__box svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    overflow: visible;
+  }
+  .node__todo__txt {
+    flex: 1 1 auto;
+    position: relative;
+    padding: 0 2px;
+  }
+  /* Strikethrough for checked todos, drawn as a freehand line */
+  .node__todo--done .node__todo__txt {
+    color: var(--ink-muted);
+  }
+  .node__todo__strike {
+    position: absolute;
+    left: -2px; right: -2px;
+    top: 50%;
+    height: 8px;
+    transform: translateY(-50%);
+    overflow: visible;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .node__todo--done .node__todo__strike { opacity: 1; }
+  .node__todo:hover .node__todo__box svg { transform: scale(1.08); transition: transform 120ms; }
+
+  /* Prompt — dashed rough rectangle */
+  .prompt {
+    position: relative;
+    width: 92%; max-width: 420px;
+    padding: 16px 22px;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    font-family: "Kalam", cursive;
+    transform: rotate(var(--rot, 0deg));
+    transition: transform 160ms;
+  }
+  .prompt:hover { transform: rotate(var(--rot, 0deg)) translateY(-1px); }
+  .prompt__shape {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 0; overflow: visible;
+  }
+  .prompt__inner { position: relative; z-index: 1; }
+  .prompt__eyebrow {
+    font-family: "Kalam", cursive;
+    font-size: 13px;
+    color: var(--ink-red);
+    font-style: italic;
+    margin-bottom: 4px;
+  }
+  .prompt__title {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 24px;
+    color: var(--ink-navy);
+    line-height: 1.1;
+  }
+  .prompt__cta {
+    margin-top: 6px;
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-red);
+    font-style: italic;
+  }
+
+  /* Choices — notebook list with checkboxes */
+  .choices {
+    position: relative;
+    width: 94%; max-width: 460px;
+    padding: 18px 22px 20px;
+    background: transparent;
+    transform: rotate(var(--rot, 0deg));
+    opacity: 1;
+    animation: choices-in 300ms cubic-bezier(.2,.7,.2,1);
+  }
+  .choices__shape {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 0; overflow: visible;
+  }
+  .choices__inner { position: relative; z-index: 1; }
+  @keyframes choices-in { from { opacity: 0; transform: translateY(-4px) rotate(var(--rot, 0deg)); } to { opacity: 1; transform: rotate(var(--rot, 0deg)); } }
+  .choices__hd {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--ink-red);
+    margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    position: relative;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .choices__hd-underline {
+    position: absolute;
+    left: 0; bottom: -6px;
+    width: 130px; height: 14px;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .choices__close {
+    background: none; border: 0;
+    font-family: "Caveat", cursive;
+    color: var(--ink-muted);
+    font-size: 26px; line-height: 1;
+    cursor: pointer; padding: 0;
+    width: 28px; height: 28px;
+    position: relative;
+  }
+  .choices__close svg { position: absolute; inset: 0; overflow: visible; }
+  .choice {
+    position: relative;
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 8px 10px 8px 0;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    font-family: "Kalam", cursive;
+    font-size: 17px;
+    font-weight: 400;
+    color: var(--ink-navy);
+    line-height: 1.4;
+    width: 100%;
+    transition: transform 140ms;
+  }
+  .choice:hover { transform: translateX(2px); }
+  .choice__box {
+    flex: 0 0 auto;
+    width: 22px; height: 22px;
+    position: relative;
+    margin-top: 2px;
+  }
+  .choice__box svg { position: absolute; inset: 0; overflow: visible; }
+  .choice__text { flex: 1; position: relative; }
+  .choice__highlight {
+    position: absolute;
+    inset: -2px -6px;
+    pointer-events: none;
+    z-index: -1;
+    overflow: visible;
+    opacity: 0;
+    transition: opacity 160ms;
+  }
+  .choice:hover .choice__highlight { opacity: 1; }
+  .choice.is-selected .choice__highlight { opacity: 1; }
+  .choice.is-selected .choice__text { font-weight: 700; }
+
+  /* Details Panel */
+  .panel__empty {
+    height: 100%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 50px 40px; text-align: center;
+    gap: 16px;
+    font-family: "Kalam", cursive;
+  }
+  .panel__empty__arrow {
+    width: 80px; height: 80px;
+    opacity: 0.6;
+    color: var(--ink-red);
+    overflow: visible;
+  }
+  .panel__empty__ttl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 32px;
+    color: var(--ink-navy);
+    line-height: 1.1;
+  }
+  .panel__empty__sub {
+    font-size: 16px; max-width: 28ch;
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+
+  .panel {
+    padding: 32px 40px 40px;
+    animation: panel-in 300ms cubic-bezier(.2,.7,.2,1);
+    font-family: "Kalam", cursive;
+  }
+  @keyframes panel-in { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+  .panel__kicker {
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-red);
+    font-style: italic;
+    margin-bottom: 6px;
+  }
+  .panel__ttl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 38px;
+    color: var(--ink-navy);
+    line-height: 1.05;
+    margin-bottom: 6px;
+    position: relative;
+    display: inline-block;
+    padding-bottom: 8px;
+  }
+  .panel__ttl-underline {
+    position: absolute;
+    left: 0; right: 0; bottom: -4px;
+    height: 14px;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .panel__meta {
+    display: flex; flex-direction: column; gap: 8px;
+    margin: 18px 0 22px;
+    padding: 14px 16px 14px 18px;
+    background: rgba(253, 245, 220, 0.55);
+    border-left: 3px solid var(--ink-red);
+    border-radius: 2px;
+    position: relative;
+  }
+  .panel__meta-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-family: "Kalam", cursive;
+    font-size: 15px;
+    color: var(--ink-black);
+    line-height: 1.35;
+  }
+  .panel__meta-row__icon {
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .panel__meta-row__lbl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    color: var(--ink-red);
+    font-size: 17px;
+    margin-right: 2px;
+    white-space: nowrap;
+  }
+  .panel__meta-row__val {
+    color: var(--ink-navy);
+    flex: 1 1 auto;
+  }
+  .panel__meta-row--urgent .panel__meta-row__val {
+    color: var(--ink-red);
+    font-weight: 700;
+  }
+  .panel__sect { margin-bottom: 22px; }
+  .panel__sect__lbl {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--ink-red);
+    margin-bottom: 8px;
+    line-height: 1;
+    display: inline-block;
+    position: relative;
+  }
+  .panel__why {
+    font-family: "Kalam", cursive;
+    font-size: 17px;
+    color: var(--ink-black);
+    line-height: 1.55;
+    padding: 4px 0;
+    position: relative;
+  }
+  .panel__why::before {
+    content: "";
+    position: absolute;
+    left: -14px; top: 4px; bottom: 4px;
+    width: 2px;
+    background: var(--ink-red);
+    opacity: 0.5;
+  }
+  .panel__body {
+    font-family: "Kalam", cursive;
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink-black);
+  }
+  .panel__cites { display: flex; flex-direction: column; gap: 8px; }
+  .panel__cite {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 4px 0;
+  }
+  .panel__cite__sup {
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    color: var(--ink-red);
+    flex: 0 0 auto;
+    min-width: 20px;
+    font-size: 18px;
+    line-height: 1;
+    margin-top: 2px;
+  }
+  .panel__cite__body { color: var(--ink-black); }
+  .panel__cite__body strong { color: var(--ink-navy); font-weight: 700; }
+  .panel__cite__body a { color: var(--ink-navy); text-decoration: underline; text-decoration-color: var(--ink-red); text-underline-offset: 3px; }
+  .panel__cite__body a:hover { color: var(--ink-red); }
+
+  .panel__actions { display: flex; gap: 16px; margin-top: 28px; }
+  .btn {
+    flex: 1;
+    padding: 10px 18px;
+    background: transparent;
+    border: 0;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--ink-navy);
+    cursor: pointer;
+    position: relative;
+    line-height: 1;
+    transform: rotate(var(--rot, 0deg));
+    transition: transform 140ms;
+  }
+  .btn:hover { transform: rotate(var(--rot, 0deg)) translateY(-1px); }
+  .btn__shape {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 0; overflow: visible;
+  }
+  .btn__label { position: relative; z-index: 1; }
+  .btn--primary .btn__label { color: var(--ink-red); }
+  .btn--ghost .btn__label { color: var(--ink-muted); }
+
+  .reopen-warn {
+    margin-top: 14px;
+    font-family: "Kalam", cursive;
+    font-size: 14px;
+    color: var(--ink-red);
+    font-style: italic;
+    padding: 8px 0 8px 16px;
+    border-left: 2px solid var(--ink-red);
+  }
+
+  /* Draw-on animation for SVG paths */
+  .rough-draw path {
+    stroke-dasharray: 800;
+    stroke-dashoffset: 800;
+    animation: draw-on 500ms ease-out forwards;
+  }
+  .rough-draw path:nth-child(2) { animation-delay: 80ms; }
+  .rough-draw path:nth-child(3) { animation-delay: 160ms; }
+  .rough-draw path:nth-child(4) { animation-delay: 240ms; }
+  @keyframes draw-on {
+    to { stroke-dashoffset: 0; }
+  }
+
+  /* ===========================
+     Sticky note — Lock-in marker
+     =========================== */
+  .sticky {
+    position: absolute;
+    width: 196px;
+    min-height: 168px;
+    padding: 26px 18px 20px;
+    background: #fef3a2;
+    color: #1e3a5f;
+    font-family: "Kalam", cursive;
+    font-weight: 700;
+    font-size: 17px;
+    line-height: 1.35;
+    text-align: center;
+    opacity: 1;
+    box-shadow:
+      0 10px 24px -8px rgba(60, 45, 20, 0.28),
+      0 6px 12px -4px rgba(60, 45, 20, 0.18),
+      0 2px 4px rgba(60, 45, 20, 0.10),
+      /* inner top-left "lifted" highlight */
+      inset 2px 2px 6px rgba(255, 255, 255, 0.35),
+      /* inner bottom-right gradient darkening for 3D feel */
+      inset -6px -8px 14px -8px rgba(180, 150, 60, 0.22);
+    /* rotation via --note-rot custom prop; mounted once per sticky */
+    transform: rotate(var(--note-rot, 0deg));
+    z-index: 5;
+    pointer-events: none;
+    /* Paper grain: inline SVG noise at ~8% */
+    background-image:
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.15 0 0 0 0 0.05 0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 140px 140px;
+    background-blend-mode: multiply;
+  }
+  /* Tape strip across top */
+  .sticky::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: -12px;
+    width: 88px;
+    height: 26px;
+    transform: translateX(-50%) rotate(var(--tape-rot, -2deg));
+    background:
+      linear-gradient(180deg,
+        rgba(255,255,255,0.38) 0%,
+        rgba(255,255,255,0.62) 40%,
+        rgba(245,240,220,0.55) 100%);
+    border-top: 1px solid rgba(255,255,255,0.5);
+    border-bottom: 1px solid rgba(180,170,140,0.25);
+    box-shadow:
+      0 2px 3px rgba(60,45,20,0.18),
+      inset 0 0 0 0.5px rgba(255,255,255,0.3);
+    /* torn edges */
+    mask-image: linear-gradient(90deg, transparent 0, #000 5px, #000 calc(100% - 5px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 5px, #000 calc(100% - 5px), transparent 100%);
+    pointer-events: none;
+    z-index: 2;
+  }
+  /* Bottom-right corner curl */
+  .sticky::after {
+    content: "";
+    position: absolute;
+    right: -1px; bottom: -1px;
+    width: 32px; height: 32px;
+    background:
+      radial-gradient(
+        circle at 0% 0%,
+        rgba(0,0,0,0) 58%,
+        rgba(60,45,20,0.12) 70%,
+        rgba(60,45,20,0.28) 85%,
+        rgba(0,0,0,0) 100%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(254,243,162,0) 48%,
+        #fbe87f 50%,
+        #e8c955 85%,
+        #b8991f 100%
+      );
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Text layer — masked reveal during the "write" phase */
+  .sticky__txt {
+    position: relative;
+    display: block;
+    /* during write-on, this mask goes 0→100% */
+    -webkit-mask-image: linear-gradient(90deg, #000 var(--write, 100%), transparent var(--write, 100%));
+            mask-image: linear-gradient(90deg, #000 var(--write, 100%), transparent var(--write, 100%));
+    color: #1e3a5f;
+  }
+  .sticky__kicker {
+    display: block;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 18px;
+    color: #c94c3a;
+    line-height: 1;
+    margin-bottom: 8px;
+    letter-spacing: 0.02em;
+  }
+  .sticky__signed {
+    display: block;
+    margin-top: 10px;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 20px;
+    color: #c94c3a;
+    transform: rotate(-3deg);
+    opacity: var(--signed-opacity, 0);
+    transition: opacity 220ms ease-out;
+  }
+
+  /* Animation sequence:
+     1) enter 0→450ms: drop from -60px, scale 1.08→1, opacity 0→1, overshoot
+     2) 450→530ms: 2° wobble on landing
+     3) 530→730ms: pause
+     4) 730→1130ms: write-on (mask reveal 0→100%) + signed fades in
+  */
+  .sticky--dropping {
+    animation:
+      sticky-drop 450ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+      sticky-wobble 80ms ease-in-out 450ms 1;
+  }
+  .sticky--dropping .sticky__txt {
+    animation: sticky-write 400ms ease-out 730ms forwards;
+  }
+  .sticky--dropping .sticky__signed {
+    animation: sticky-sign 220ms ease-out 980ms forwards;
+  }
+  /* Safety: if the drop animation doesn't run (tab throttled, iframe
+     paused, etc), the sticky still renders at its settled state. */
+  .sticky {
+    animation-fill-mode: forwards;
+  }
+  .sticky:not(.sticky--dropping) .sticky__txt { --write: 100%; }
+  .sticky:not(.sticky--dropping) .sticky__signed { opacity: 1; }
+  @keyframes sticky-drop {
+    0%   { transform: translateY(-60px) rotate(var(--note-rot, 0deg)) scale(1.08); opacity: 0.2; }
+    60%  { opacity: 1; }
+    100% { transform: translateY(0) rotate(var(--note-rot, 0deg)) scale(1); opacity: 1; }
+  }
+  @keyframes sticky-wobble {
+    0%   { transform: translateY(0) rotate(calc(var(--note-rot, 0deg) + 2deg)) scale(1); }
+    100% { transform: translateY(0) rotate(var(--note-rot, 0deg)) scale(1); }
+  }
+  @keyframes sticky-write {
+    from { --write: 0%; }
+    to   { --write: 100%; }
+  }
+  /* fallback for browsers that don't animate custom props */
+  @property --write {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 100%;
+  }
+  @keyframes sticky-sign {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* Resting state: masked text fully visible, signed visible */
+  .sticky:not(.sticky--dropping) .sticky__txt { --write: 100%; }
+  .sticky:not(.sticky--dropping) .sticky__signed { --signed-opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sticky--dropping {
+      animation: sticky-fade 280ms ease-out forwards;
+    }
+    .sticky--dropping .sticky__txt {
+      animation: none;
+      --write: 100%;
+    }
+    .sticky--dropping .sticky__signed {
+      animation: none;
+      opacity: 1;
+    }
+    @keyframes sticky-fade {
+      from { opacity: 0; transform: rotate(var(--note-rot, 0deg)) scale(1); }
+      to   { opacity: 1; transform: rotate(var(--note-rot, 0deg)) scale(1); }
+    }
+  }
+  /* ============================================================
+     RIGHT-PAGE STICKY BOARD — default panel view
+     ============================================================ */
+  .board {
+    padding: 28px 36px 40px;
+    position: relative;
+  }
+  .board__hd { margin-bottom: 22px; }
+  .board__ttl {
+    position: relative;
+    display: inline-block;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 38px;
+    color: var(--ink-navy);
+    line-height: 1.1;
+    padding-bottom: 6px;
+  }
+  .board__sub {
+    margin-top: 10px;
+    color: var(--ink-muted);
+    font-size: 17px;
+    font-style: italic;
+  }
+  .board__slots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 18px;
+    margin-bottom: 20px;
+  }
+  .board__slot {
+    position: relative;
+    min-height: 148px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 6px;
+  }
+  .board__slot--empty,
+  .board__slot--retired {
+    color: var(--ink-muted);
+    font-family: "Caveat", cursive;
+    border-radius: 6px;
+    min-height: 130px;
+  }
+  .board__slot--empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    opacity: 0.55;
+  }
+  .board__slot__num {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--ink-muted);
+    line-height: 1;
+  }
+  .board__slot__lbl {
+    font-size: 15px;
+    color: var(--ink-muted);
+    text-align: center;
+    font-style: italic;
+  }
+  .board__slot--retired {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.45;
+  }
+  .board__slot__rough { z-index: 0; }
+
+  /* Sticky variant for the board: smaller, no absolute positioning */
+  .sticky--board {
+    position: static;
+    transform: rotate(var(--note-rot, 0deg));
+    width: 100%;
+    max-width: 220px;
+    padding: 18px 16px 14px;
+    font-size: 16px;
+  }
+  .sticky--board .sticky__txt { font-size: 17px; line-height: 1.25; }
+  .sticky--board .sticky__kicker { font-size: 15px; }
+  .sticky--board .sticky__signed { font-size: 17px; }
+
+  /* Confirm button area */
+  .board__confirm-wrap {
+    margin-top: 10px;
+    padding: 18px 14px 10px;
+    border-top: 1px dashed var(--ink-muted);
+    text-align: center;
+  }
+  .board__confirm-wrap--top {
+    margin: 4px 0 22px;
+    padding: 18px 18px 16px;
+    background: rgba(244, 211, 94, 0.22);
+    border: 1.5px dashed #b8991f;
+    border-radius: 8px;
+    text-align: center;
+    position: relative;
+  }
+  .board__confirm-wrap--top::before {
+    content: "★ ready to start executing";
+    position: absolute;
+    top: -11px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    background: var(--paper);
+    padding: 2px 12px;
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--ink-red);
+    letter-spacing: 0.02em;
+  }
+  .board__confirm-wrap--top .btn--confirm {
+    margin-bottom: 10px;
+  }
+  .board__confirm-note {
+    font-family: "Kalam", cursive;
+    font-size: 15px;
+    color: var(--ink-muted);
+    margin-bottom: 16px;
+    line-height: 1.5;
+    font-style: italic;
+  }
+  .board__confirm-wrap--top .board__confirm-note {
+    margin-bottom: 0;
+    margin-top: 10px;
+  }
+  .btn--confirm { font-size: 19px !important; padding: 14px 26px !important; }
+  .board__exec-note {
+    margin-top: 6px;
+    padding: 14px 16px;
+    background: rgba(244, 211, 94, 0.18);
+    border-radius: 6px;
+    font-family: "Kalam", cursive;
+    font-size: 15px;
+    color: var(--ink-black);
+    line-height: 1.5;
+    position: relative;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .board__exec-note__bullet {
+    flex: 0 0 auto;
+    color: #5dbe87;
+    font-weight: 700;
+    font-size: 20px;
+    line-height: 1;
+  }
+  .board__done-note {
+    margin-top: 10px;
+    text-align: center;
+    font-family: "Caveat", cursive;
+    font-size: 26px;
+    color: var(--ink-red);
+  }
+
+  /* ============================================================
+     STICKY LANDED ON A CARD — after all stage's todos done
+     ============================================================ */
+  .node--locked .sticky--landed {
+    position: absolute;
+    top: -14px;
+    right: -18px;
+    width: 168px;
+    padding: 14px 14px 12px;
+    transform: rotate(var(--note-rot, 4deg));
+    z-index: 3;
+    font-size: 15px;
+  }
+  .node--locked .sticky--landed .sticky__txt { font-size: 15px; line-height: 1.2; }
+  /* "done!" kicker lives BELOW the signature in landed stickies — oversized,
+     red, handwritten stamp-feel. Replaces the old red-strike treatment. */
+  .node--locked .sticky--landed .sticky__kicker--done {
+    display: block;
+    color: var(--ink-red);
+    font-family: "Caveat", cursive;
+    font-weight: 700;
+    font-size: 34px;
+    line-height: 1;
+    margin: 8px 0 0;
+    letter-spacing: 0.5px;
+    transform: rotate(-6deg);
+    transform-origin: left center;
+  }
+  .node--locked .sticky--landed .sticky__signed { font-size: 15px; margin-top: 6px; }
+  .sticky__strike {
+    position: absolute;
+    left: -4px;
+    right: -4px;
+    top: 42%;
+    width: calc(100% + 8px);
+    height: 18px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .sticky--landed .sticky__txt--struck { position: relative; color: var(--ink-muted); }
+
+  /* Landing animation: sticky flies in from upper-right and settles */
+  @keyframes sticky-land {
+    0%   { transform: translate(60px, -80px) rotate(calc(var(--note-rot, 4deg) + 12deg)) scale(1.15); opacity: 0; }
+    40%  { opacity: 1; }
+    70%  { transform: translate(0, 0) rotate(calc(var(--note-rot, 4deg) - 3deg)) scale(1.04); }
+    100% { transform: translate(0, 0) rotate(var(--note-rot, 4deg)) scale(1); opacity: 1; }
+  }
+  .sticky--landing {
+    animation: sticky-land 900ms cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+  }
+
+  /* Row that has landed needs extra right-side clearance for overhang */
+  .tl__row--landed { padding-right: 24px; }
+
+  /* Done card gets a subtle dim and green-ish tint */
+  .node--done {
+    opacity: 0.88;
+  }
+  .node--done .node__status--done { color: #5dbe87; }
+
+</style>
+</head>
+<body>
+
+<div class="frame paper-bg">
+  <div class="paper-vignette"></div>
+  <button class="canvas__reset" id="reset-btn">↺ start over</button>
+  <div class="split">
+        <div class="split__list">
+          <div class="tl" id="tl">
+            <div class="tl__row">
+              <div class="node node--root" style="--rot: -1deg;">
+                <svg class="node__self-arrow" id="root-arrow" viewBox="0 0 60 70"></svg>
+                <div class="node__inner">
+                  <div class="node__title-main" data-root-underline>YOU ARE HERE</div>
+                  <div class="node__sub">Maya · Freshman · First-gen · CS/AI curious</div>
+                </div>
+              </div>
+            </div>
+            <div id="stages"></div>
+          </div>
+        </div>
+        <div class="split__panel" id="panel">
+          <div class="panel__empty">
+            <svg class="panel__empty__arrow" viewBox="0 0 80 80" id="empty-arrow"></svg>
+            <div class="panel__empty__ttl">pick a first move</div>
+            <div class="panel__empty__sub">open the dashed prompt on the left — three options for Stage 1 will appear.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<script>
+// ============================================================
+// REAL UCLA CONTENT, hand-curated
+// ============================================================
+// Paths branch. Each stage's options depend on the path key
+// locked in at the previous stage. First stage is always shown.
+// ============================================================
+
+const STAGES = [
+  {
+    key: 'direction',
+    stage: 'Stage 1 · Declare a direction',
+    when: 'Month 1–2 · Fall 2026',
+    prompt: 'Pick your starting direction',
+    // Options apply regardless of previous stage (this is stage 1)
+    optionsBy: {
+      '_root_': [
+        {
+          id: 'cs-ai',
+          pathTag: 'ai',
+          title: 'Declare CS major · AI/ML lean',
+          eyebrow: 'Direction',
+          when: 'Declare by end of 3rd quarter',
+          effort: 'Admin · ~2 hrs',
+          deadline: 'Change of major via MyUCLA',
+          why: 'You told me ML and "making stuff that thinks" is what pulls you in. CS in Samueli gives you the math-heavy track and pre-reqs (CS 31/32/33, Math 33A/B, Stats) that every ML elective assumes.',
+          body: 'Path: Samueli Engineering Computer Science B.S. Core sequence is CS 31 → 32 → 33 → 35L → M51A. AI-relevant electives unlock after CS 35L: CS M146 (Intro ML), CS 161 (AI), CS 188 (NLP), CS M148 (Data Science).',
+          cites: [
+            ['1', 'UCLA CS Department', '<a href="#">cs.ucla.edu</a> — major requirements, course map, and advising.'],
+            ['2', 'Samueli School of Engineering', '<a href="#">samueli.ucla.edu</a> — change-of-major petition for L&S students.']
+          ]
+        },
+        {
+          id: 'cs-building',
+          pathTag: 'build',
+          title: 'Declare CS major · builder/SWE lean',
+          eyebrow: 'Direction',
+          when: 'Declare by end of 3rd quarter',
+          effort: 'Admin · ~2 hrs',
+          deadline: 'Change of major via MyUCLA',
+          why: 'If you want to ship products — apps, games, web — lean into builder culture early. The same CS degree, but you\'ll optimize for CS 35L, CS 118 (networking), CS 143 (databases), and project-driven electives instead of theory.',
+          body: 'Same Samueli CS B.S. Different elective stack: CS 35L + CS 118 + CS 143 + CS 152A (digital design) + CS 180. Pair with HCI/Design minor if Product appeals.',
+          cites: [
+            ['1', 'UCLA CS Department', '<a href="#">cs.ucla.edu</a> — curriculum and electives.'],
+            ['2', 'UCLA Design Media Arts', '<a href="#">dma.ucla.edu</a> — complementary minor option.']
+          ]
+        },
+        {
+          id: 'explorer',
+          pathTag: 'explore',
+          title: 'Stay undeclared · explore CS + DS + Stats',
+          eyebrow: 'Direction',
+          when: 'Explore Year 1',
+          effort: 'Light · 1 advising meeting',
+          deadline: 'Must declare by end of sophomore year',
+          why: 'You said you\'re "CS-curious but not sure." L&S lets you take CS 31 + Stats 10 + Data Theory 101 without declaring. If CS clicks, you transfer into Samueli; if not, Data Science B.S. or Stats are strong fallbacks.',
+          body: 'Register as "Undeclared · Physical Sciences." Meet with a College Academic Counselor (Murphy Hall A316). Try CS 31, Stats 10, and Data Theory 101 winter/spring. The AAP (Academic Advancement Program) is your home for first-gen advising.',
+          cites: [
+            ['1', 'UCLA College of Letters & Science', '<a href="#">ucla.edu/academics</a> — 141 undergraduate majors; undeclared/undeclared option at admission.'],
+            ['2', 'UCLA Academic Advancement Program', '<a href="#">aap.ucla.edu</a> — dedicated counseling for first-gen and underrepresented students.']
+          ]
+        }
+      ]
+    }
+  },
+  {
+    key: 'community',
+    stage: 'Stage 2 · Find your people',
+    when: 'Month 2–4 · Fall/Winter 2026',
+    prompt: 'Pick your first community',
+    optionsBy: {
+      'ai': [
+        {
+          id: 'acm-ai',
+          pathTag: 'ai-research',
+          title: 'Join ACM AI · beginner track',
+          eyebrow: 'Community',
+          when: 'Applications open Week 2, Fall 2026',
+          effort: '2 hrs/wk · weekly workshop',
+          deadline: 'General Meeting Week 1 · no app needed for beginner track',
+          why: 'ACM AI runs the friendliest ML on-ramp at UCLA — weekly workshops moving from NumPy → PyTorch → your first model. Officers are undergrads, not TAs, so the pace fits a freshman.',
+          body: 'ACM AI is one of nine committees in ACM at UCLA (the largest CS org in Southern California, ~3,500 event attendees/year). No major or GPA requirement to join. Beginner track runs Fall; advanced projects open Winter.',
+          cites: [
+            ['1', 'ACM AI at UCLA', '<a href="#">uclaacm.com/committees#ai</a> — "Learning Machine Learning." Workshops + advanced projects track.'],
+            ['2', 'ACM at UCLA', '<a href="#">uclaacm.com</a> — 3,500+ attendees annually, 9 committees, open to all majors and skill levels.']
+          ]
+        },
+        {
+          id: 'bsa',
+          pathTag: 'ai-applied',
+          title: 'Bruin Sports Analytics · freshman cohort',
+          eyebrow: 'Community',
+          when: 'Applications Week 3, Fall 2026',
+          effort: '4 hrs/wk · team project',
+          deadline: 'Rolling · freshman team fills fast',
+          why: 'Applied ML with real data (NBA play-by-play, NCAA scraping) and a public blog where first-years get bylines. Portfolio-friendly and a lower bar than joining a lab.',
+          body: 'Bruin Sports Analytics is a student org that publishes data-driven sports analysis. Freshman cohort gets paired with upperclass mentors for a quarter-long project that ships on the blog.',
+          cites: [
+            ['1', 'Bruin Sports Analytics', '<a href="#">bruinsportsanalytics.com</a> — student org blog; project gallery and freshman recruitment.']
+          ]
+        },
+        {
+          id: 'creative-labs',
+          pathTag: 'ai-product',
+          title: 'Creative Labs · AI product team',
+          eyebrow: 'Community',
+          when: 'Applications Week 2, Fall 2026',
+          effort: '6 hrs/wk · cross-disciplinary',
+          deadline: 'App closes end of Week 3',
+          why: 'You work with a designer + PM + engineers to ship one product per quarter. AI track lets you do the ML without having to also build everything else yourself.',
+          body: 'Creative Labs is UCLA\'s student-run product incubator. 5–6 person teams (eng + design + PM). AI track has shipped chatbots, generative tools, and study apps used by thousands of students.',
+          cites: [
+            ['1', 'UCLA Creative Labs', '<a href="#">creativelabs.ucla.edu</a> — student product studio; applications open fall/spring.']
+          ]
+        }
+      ],
+      'build': [
+        {
+          id: 'acm-hack',
+          pathTag: 'build-web',
+          title: 'Join ACM Hack · learn web dev',
+          eyebrow: 'Community',
+          when: 'Week 1 General Meeting',
+          effort: '2 hrs/wk · workshops',
+          deadline: 'No app · open drop-in',
+          why: '"Move fast, build things" is their literal tagline. The best freshman path if you want to ship a website by week 6 and have shipped something demo-able for your résumé.',
+          body: 'ACM Hack runs quarterly workshops on full-stack web development (React + Node). They also run Hack on the Hill, a beginner-friendly 12-hour hackathon for UCLA freshmen living on the Hill.',
+          cites: [
+            ['1', 'ACM Hack at UCLA', '<a href="#">hack.uclaacm.com</a> — "Move Fast, Build Things." Workshops + Hack on the Hill.'],
+            ['2', 'Hack on the Hill', '<a href="#">hoth.uclaacm.com</a> — 250+ attendees last year; beginner-friendly, on-Hill hackathon.']
+          ]
+        },
+        {
+          id: 'blueprint',
+          pathTag: 'build-social',
+          title: 'LA Blueprint · build for nonprofits',
+          eyebrow: 'Community',
+          when: 'Applications Week 2, Fall 2026',
+          effort: '6 hrs/wk · year-long project',
+          deadline: 'App due end of Week 3',
+          why: 'Same engineering stack as Hack, but you\'re shipping something real for an LA nonprofit. Portfolio-friendly and the mission story is a strong résumé/essay angle.',
+          body: 'Blueprint chapters build full-stack tools pro-bono for nonprofits. UCLA Blueprint typically ships 2–3 projects per year. Engineering-only track is open to freshmen.',
+          cites: [
+            ['1', 'Blueprint (UCLA chapter)', '<a href="#">blueprint.ucla.edu</a> — student software agency for nonprofits.']
+          ]
+        },
+        {
+          id: 'acm-studio',
+          pathTag: 'build-games',
+          title: 'ACM Studio · ship a game',
+          eyebrow: 'Community',
+          when: 'Student Run Studios applications Week 2',
+          effort: '6 hrs/wk · 5-month project',
+          deadline: 'SRS deadline Week 3',
+          why: 'If the reason you like code is games, this is it — pair with a game-dev lead and ship a playable game in 5 months. 150+ students did this last year.',
+          body: 'ACM Studio runs Student Run Studios: 12 teams × 12–15 students, each led by an experienced game-dev lead. Showcase at end of spring.',
+          cites: [
+            ['1', 'ACM Studio at UCLA', '<a href="#">studio.uclaacm.com</a> — "Creative Expression through Games." Student Run Studios pairs teams with experienced leads.']
+          ]
+        }
+      ],
+      'explore': [
+        {
+          id: 'acm-design',
+          pathTag: 'explore-design',
+          title: 'Join ACM Design · learn product thinking',
+          eyebrow: 'Community',
+          when: 'Week 1 General Meeting',
+          effort: '2 hrs/wk · workshops',
+          deadline: 'No app · open drop-in',
+          why: '"Form Follows Function." If you\'re unsure about code, design lets you learn the CS community from adjacent — lower commitment, high-signal résumé add, and you meet everyone.',
+          body: 'ACM Design teaches Figma, UX research, and product-thinking. Many members aren\'t CS majors. Great if you\'re undeclared and want to keep your options open.',
+          cites: [
+            ['1', 'ACM Design at UCLA', '<a href="#">uclaacm.com/committees#design</a> — "Form Follows Function." Workshops open to all majors.']
+          ]
+        },
+        {
+          id: 'aap-cohort',
+          pathTag: 'explore-firstgen',
+          title: 'AAP Freshman/Transfer Summer Program alum group',
+          eyebrow: 'Community',
+          when: 'Continues through all 4 years',
+          effort: '1–2 hrs/wk · peer study',
+          deadline: 'AAP membership opens at admission',
+          why: 'Before you pick a tech community, build your first-gen anchor. AAP is the largest university-based program of its kind and your best source for advising, tutoring, and research intros.',
+          body: 'The Academic Advancement Program (AAP) at UCLA serves ~6,000 undergraduates. Free tutoring, peer learning groups, counselors who specialize in first-gen, and direct pipelines into research.',
+          cites: [
+            ['1', 'UCLA AAP', '<a href="#">aap.ucla.edu</a> — academic counseling, peer learning, and research prep for first-gen, low-income, and historically underserved students.']
+          ]
+        },
+        {
+          id: 'consulting',
+          pathTag: 'explore-consulting',
+          title: 'Bruin Consulting · freshman analyst track',
+          eyebrow: 'Community',
+          when: 'Applications Week 2, Fall 2026',
+          effort: '5 hrs/wk · client project',
+          deadline: 'App + interview Week 3',
+          why: 'Unsure between tech and business? Consulting exposes you to real company problems (often tech companies!) and the analyst track is explicitly for first-years.',
+          body: 'Bruin Consulting pairs teams of 4–5 undergrads with real clients. Freshman analyst track is designed so you don\'t need technical background; you learn by shadowing upperclass consultants.',
+          cites: [
+            ['1', 'Bruin Consulting', '<a href="#">bruinconsulting.com</a> — one of the largest pre-professional consulting orgs at UCLA.']
+          ]
+        }
+      ]
+    }
+  },
+  {
+    key: 'signal',
+    stage: 'Stage 3 · Build signal',
+    when: 'Month 4–7 · Winter/Spring 2027',
+    prompt: 'Earn your first credential',
+    optionsBy: {
+      'ai-research': [
+        {
+          id: 'cs35l-lab-email',
+          pathTag: 'research-lab',
+          title: 'CS 35L + cold-email 3 AI labs',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: 'CS 35L: 15 hrs/wk; emails: 2 hrs',
+          deadline: 'Email by Week 2 of Winter',
+          why: 'CS 35L (Software Construction) is the course every lab PI expects you to have taken. Taking it Winter + emailing labs the same week is how freshmen actually land a spot by Spring.',
+          body: 'Target PIs: Prof. Kai-Wei Chang (NLP, fairness), Prof. Aditya Grover (generative models), Prof. Quanquan Gu (theory of ML). Email: 1 paragraph on you, 1 on why their work, ask for a 15-min chat. Mention CS 35L.',
+          cites: [
+            ['1', 'UCLA CS 35L', '<a href="#">catalog.registrar.ucla.edu</a> — Software Construction; required for most upper-div CS.'],
+            ['2', 'UCLA CS Faculty', '<a href="#">cs.ucla.edu/faculty</a> — directory of PIs by research area.']
+          ]
+        },
+        {
+          id: 'urfp',
+          pathTag: 'research-funded',
+          title: 'Apply to URFP (Undergraduate Research Fellows)',
+          eyebrow: 'Signal',
+          when: 'Winter–Spring 2027',
+          effort: '~10 hrs/wk in a lab',
+          deadline: 'Application window: Oct 14 – Nov 14',
+          why: 'URFP is the URC-Sciences\' two-quarter on-ramp specifically for students just starting research. It pipelines you directly into URSP and SURP later. Accepting you into a lab also becomes easier once you\'re funded.',
+          body: 'The URFP is a two-quarter program supporting students in life/physical science or engineering research with a UCLA faculty during Winter + Spring. Application via MyUCLA Campus Life tab.',
+          cites: [
+            ['1', 'URC-Sciences URFP', '<a href="#">sciences.ugresearch.ucla.edu/programs-and-scholarships/urfp/</a> — two-quarter research program; apps Oct 14–Nov 14.']
+          ]
+        },
+        {
+          id: 'acm-ai-advanced',
+          pathTag: 'research-projects',
+          title: 'ACM AI advanced track · lead a project',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: '5 hrs/wk · team lead role',
+          deadline: 'Internal app end of Fall quarter',
+          why: 'If you crushed beginner track in Fall, advanced track lets you lead a project of your own design — and it\'s graded seriously. A Winter project ships by Spring and becomes your first real ML artifact.',
+          body: 'Advanced track projects range from CV to NLP to RL. You pitch, get matched with 3–5 collaborators, and present at ACM\'s end-of-year showcase.',
+          cites: [
+            ['1', 'ACM AI at UCLA', '<a href="#">uclaacm.com/committees#ai</a> — "Learning Machine Learning" beginner + advanced tracks.']
+          ]
+        }
+      ],
+      'ai-applied': [
+        {
+          id: 'bsa-publish',
+          pathTag: 'applied-portfolio',
+          title: 'Publish a BSA blog post · NBA tracking data',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: '4 hrs/wk · 6-week project',
+          deadline: 'Pitch by end of Fall',
+          why: 'A BSA post with your name on it is a citable portfolio item by Winter — enough to cold-apply to applied-ML internships your sophomore summer. Way higher conversion than cold-emailing labs as a freshman.',
+          body: 'Typical BSA post: 1,200–2,000 words, analysis of a specific question using play-by-play data, published on blog + LinkedIn-reshared by officers (major reach).',
+          cites: [
+            ['1', 'Bruin Sports Analytics blog', '<a href="#">bruinsportsanalytics.com/blog</a> — student-authored data posts; freshman authors featured.']
+          ]
+        },
+        {
+          id: 'urfp',
+          pathTag: 'applied-funded',
+          title: 'Apply to URFP with an applied-ML framing',
+          eyebrow: 'Signal',
+          when: 'Winter–Spring 2027',
+          effort: '~10 hrs/wk in a lab',
+          deadline: 'Application window: Oct 14 – Nov 14',
+          why: 'Applied ML labs (e.g. Statistical ML in medicine, or the Samueli data-science labs) are actually easier for first-years to break into than pure-theory labs. URFP makes you cheaper to host.',
+          body: 'Two-quarter program, Winter + Spring. Target labs in Biostats, Ophthalmology ML, or Prof. Bolei Zhou\'s Human-Robot Interaction lab.',
+          cites: [
+            ['1', 'URC-Sciences URFP', '<a href="#">sciences.ugresearch.ucla.edu/programs-and-scholarships/urfp/</a> — apps Oct 14–Nov 14.']
+          ]
+        },
+        {
+          id: 'datafest',
+          pathTag: 'applied-compete',
+          title: 'ASA DataFest team · 48-hour data challenge',
+          eyebrow: 'Signal',
+          when: 'April 2027',
+          effort: 'One weekend · full-time',
+          deadline: 'Team registration Feb 2027',
+          why: 'DataFest is an anchor weekend on every UCLA stats/CS résumé. Good-enough teams win placements that become talking points for internships. Low-commitment, high-signal.',
+          body: 'Hosted by UCLA Stats department. 48 hours to analyze a large real dataset; final presentations judged by industry panel.',
+          cites: [
+            ['1', 'UCLA Stats DataFest', '<a href="#">datafest.stat.ucla.edu</a> — annual 48-hour data analysis competition.']
+          ]
+        }
+      ],
+      'ai-product': [
+        {
+          id: 'creative-ship',
+          pathTag: 'product-ship',
+          title: 'Ship your Creative Labs product · demo day',
+          eyebrow: 'Signal',
+          when: 'End of Spring 2027',
+          effort: '8 hrs/wk · full quarter',
+          deadline: 'Demo day Week 10, Spring',
+          why: 'Ship a real AI product to real users and demo it. This is the résumé line that unlocks PM and ML-engineer internships — hiring managers can click and try it.',
+          body: 'Teams showcase at the CL demo day + publish on the CL portfolio site. Past wins: study apps, writing feedback tools, scheduling assistants.',
+          cites: [
+            ['1', 'Creative Labs', '<a href="#">creativelabs.ucla.edu</a> — student product studio demo day.']
+          ]
+        },
+        {
+          id: 'hoth-win',
+          pathTag: 'product-hack',
+          title: 'Hack on the Hill · win a track prize',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: 'One weekend · 12 hours',
+          deadline: 'Register by Week 6 of Winter',
+          why: 'A track prize at HotH is a weekend for a talking point. Beginner-friendly means the bar is realistic for a freshman team.',
+          body: 'HotH drew 250+ attendees in 2024 with funded prize pools from UCLA Residential Life and corporate sponsors (Jane Street, Hudson River Trading, Qualcomm, Lockheed Martin).',
+          cites: [
+            ['1', 'Hack on the Hill', '<a href="#">hoth.uclaacm.com</a> — beginner-friendly hackathon; 250+ attendees.']
+          ]
+        },
+        {
+          id: 'urfp',
+          pathTag: 'product-funded',
+          title: 'URFP in an HCI/ML product lab',
+          eyebrow: 'Signal',
+          when: 'Winter–Spring 2027',
+          effort: '~10 hrs/wk',
+          deadline: 'Application window: Oct 14 – Nov 14',
+          why: 'URFP in Prof. Xin Liu\'s HCI lab or Prof. Zhou\'s Human-Robot group puts "academic research" on your CV while you keep shipping products.',
+          body: 'Two-quarter program. Combine with Creative Labs for a rare "ships product + publishes research" combo at the freshman level.',
+          cites: [
+            ['1', 'URC-Sciences URFP', '<a href="#">sciences.ugresearch.ucla.edu/programs-and-scholarships/urfp/</a> — apps Oct 14–Nov 14.']
+          ]
+        }
+      ],
+      'build-web': [
+        {
+          id: 'hoth',
+          pathTag: 'web-hack',
+          title: 'Win a track at Hack on the Hill',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: 'One weekend · 12 hours',
+          deadline: 'Register Week 6 of Winter',
+          why: 'You already know web from Hack workshops — HotH is the weekend where that becomes a demo you can put on a résumé. Beginner-friendly, sponsored, on-Hill.',
+          body: '250+ attendees, $1,000+ in prizes, sponsored by Jane Street / HRT / Qualcomm / Lockheed / UCLA Res Life.',
+          cites: [
+            ['1', 'Hack on the Hill', '<a href="#">hoth.uclaacm.com</a> — beginner-friendly, on-Hill hackathon.']
+          ]
+        },
+        {
+          id: 'cs35l-dev',
+          pathTag: 'web-acm-dev',
+          title: 'CS 35L + apply to ACM Dev Team',
+          eyebrow: 'Signal',
+          when: 'Winter–Spring 2027',
+          effort: '15 hrs/wk (35L) + 5 hrs/wk Dev',
+          deadline: 'Dev Team app end of Fall',
+          why: 'CS 35L teaches the exact stack (Git, React, Node, Linux) ACM Dev uses. Building uclaacm.com in production is a top-tier freshman portfolio line — they won ACM\'s Outstanding Chapter Website Award.',
+          body: 'ACM Dev Team builds and maintains uclaacm.com + members portal. Codebase is Next.js/React; open source on GitHub.',
+          cites: [
+            ['1', 'ACM at UCLA Dev Team', '<a href="#">github.com/uclaacm</a> — open-source organization; site built in Next.js.'],
+            ['2', 'UCLA CS News', '<a href="#">cs.ucla.edu</a> — ACM Dev won the 2023–24 Outstanding Chapter Website award.']
+          ]
+        },
+        {
+          id: 'ta-cs31',
+          pathTag: 'web-teach',
+          title: 'Apply to be a CS 31 Learning Assistant',
+          eyebrow: 'Signal',
+          when: 'Spring 2027',
+          effort: '10 hrs/wk · paid',
+          deadline: 'LA application Feb 2027',
+          why: 'Paid, on-campus, teaches you C++ and algorithms by forcing you to re-explain them. Strong signal to future employers and you make connections with CS faculty.',
+          body: 'UCLA CS Learning Assistant program places undergrads in CS 31/32 sections as paid TAs. Apply Winter; start Spring.',
+          cites: [
+            ['1', 'UCLA CS LA Program', '<a href="#">cs.ucla.edu/la-program</a> — Learning Assistant application info.']
+          ]
+        }
+      ],
+      'build-social': [
+        {
+          id: 'blueprint-ship',
+          pathTag: 'social-ship',
+          title: 'Ship your Blueprint nonprofit project',
+          eyebrow: 'Signal',
+          when: 'Spring 2027',
+          effort: '6 hrs/wk · 2-quarter project',
+          deadline: 'Demo day end of Spring',
+          why: 'You get a live product used by a real nonprofit — rare at the freshman level. Mission-driven résumé line that reads well for both industry and grad school.',
+          body: 'UCLA Blueprint ships 2–3 projects/year for LA nonprofits. You handoff a maintainable codebase + documentation.',
+          cites: [
+            ['1', 'Blueprint UCLA', '<a href="#">blueprint.ucla.edu</a> — nonprofit software agency.']
+          ]
+        },
+        {
+          id: 'teachla',
+          pathTag: 'social-teach',
+          title: 'Join ACM Teach LA · teach K-12 CS',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: '3 hrs/wk · weekly class',
+          deadline: 'Onboarding early Winter',
+          why: 'High-signal volunteering tied to CS. Builds your explanation skills and looks great for every grad school / scholarship essay.',
+          body: 'ACM Teach LA delivers CS curriculum to K-12 Title 1 schools in LA. You co-teach with an experienced officer.',
+          cites: [
+            ['1', 'ACM Teach LA', '<a href="#">teachla.uclaacm.com</a> — CS curriculum for K-12 Title 1 schools in LA.']
+          ]
+        },
+        {
+          id: 'ta-cs31',
+          pathTag: 'social-LA',
+          title: 'Apply to be a CS 31 Learning Assistant',
+          eyebrow: 'Signal',
+          when: 'Spring 2027',
+          effort: '10 hrs/wk · paid',
+          deadline: 'LA application Feb 2027',
+          why: 'Paid, and the mentoring work dovetails perfectly with your service orientation.',
+          body: 'UCLA CS LA program places undergrads in CS 31/32 as paid TAs. Apply Winter; start Spring.',
+          cites: [
+            ['1', 'UCLA CS LA Program', '<a href="#">cs.ucla.edu/la-program</a> — LA application info.']
+          ]
+        }
+      ],
+      'build-games': [
+        {
+          id: 'studio-ship',
+          pathTag: 'games-ship',
+          title: 'Ship your Student Run Studios game',
+          eyebrow: 'Signal',
+          when: 'End of Spring 2027',
+          effort: '6 hrs/wk · 5 months',
+          deadline: 'SRS Showcase Week 10 Spring',
+          why: 'Complete a game, ship it at the Showcase (150+ students presented last year). One playable game from your freshman year is a signature résumé piece.',
+          body: 'Teams of 12–15 with a game-dev lead; 5-month cycle Fall → Spring. Showcase event funded by the UCLA CS Department.',
+          cites: [
+            ['1', 'ACM Studio', '<a href="#">studio.uclaacm.com</a> — Student Run Studios 5-month game-dev program.']
+          ]
+        },
+        {
+          id: 'cs174a',
+          pathTag: 'games-graphics',
+          title: 'Target CS 174A (Graphics) by Sophomore Fall',
+          eyebrow: 'Signal',
+          when: 'Plan now, take later',
+          effort: 'Prereq-planning · 1 hr advising',
+          deadline: 'MyUCLA enrollment Sophomore Fall',
+          why: 'CS 174A is THE UCLA graphics gateway course. If you want to work in games/graphics long term, planning to take it sophomore fall means lining up 31/32/33/35L first.',
+          body: 'Prerequisites: CS 32, Math 33A. Taught by Prof. Asish Law (among others). Projects use WebGL; final projects often become portfolio pieces.',
+          cites: [
+            ['1', 'UCLA CS 174A', '<a href="#">catalog.registrar.ucla.edu</a> — Introduction to Computer Graphics.']
+          ]
+        },
+        {
+          id: 'bdc',
+          pathTag: 'games-design',
+          title: 'Bruin Design Collective · game UX track',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: '4 hrs/wk',
+          deadline: 'App rolling',
+          why: 'Games aren\'t just code — narrative, systems, UX. Joining BDC gives you the designer language other devs don\'t have.',
+          body: 'Bruin Design Collective runs quarterly tracks including Product, Illustration, and Games UX. Open to all majors.',
+          cites: [
+            ['1', 'Bruin Design Collective', '<a href="#">bruindesign.com</a> — UCLA\'s design-focused student org.']
+          ]
+        }
+      ],
+      'explore-design': [
+        {
+          id: 'dma31',
+          pathTag: 'design-code',
+          title: 'Take DMA 28 + CS 31 · see which sticks',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: '12 hrs/wk combined',
+          deadline: 'MyUCLA enrollment Week 9 Fall',
+          why: 'DMA 28 (Interactivity) and CS 31 are both beginner-friendly and run Winter. Taking both gives you a real signal about whether you\'re a designer-who-codes or a coder-who-designs.',
+          body: 'DMA 28: Processing + creative coding; meets 6 hrs/wk. CS 31: C++ intro; meets 5 hrs/wk lecture + 2 hr lab.',
+          cites: [
+            ['1', 'UCLA DMA', '<a href="#">dma.ucla.edu</a> — Design Media Arts department.'],
+            ['2', 'UCLA CS 31', '<a href="#">catalog.registrar.ucla.edu</a> — Introduction to Computer Science I.']
+          ]
+        },
+        {
+          id: 'acm-design-case',
+          pathTag: 'design-case',
+          title: 'Ship an ACM Design case study',
+          eyebrow: 'Signal',
+          when: 'Spring 2027',
+          effort: '4 hrs/wk · quarter-long',
+          deadline: 'Quarter-long project ends Week 10',
+          why: 'A Figma case study with a real problem + process + outcome is a portfolio-quality artifact even as a freshman. Gets you into the UCLA design community.',
+          body: 'ACM Design runs quarter-long design sprints. Final case studies go on members\' personal sites and are featured in ACM Design\'s portfolio roundup.',
+          cites: [
+            ['1', 'ACM Design at UCLA', '<a href="#">uclaacm.com/committees#design</a> — design workshops + case studies.']
+          ]
+        },
+        {
+          id: 'declare-dma',
+          pathTag: 'design-dma',
+          title: 'Declare DMA as your major',
+          eyebrow: 'Signal',
+          when: 'End of Winter 2027',
+          effort: 'Admin',
+          deadline: 'DMA declaration is portfolio-reviewed',
+          why: 'If DMA 28 lit you up more than CS 31, DMA lets you do creative coding + generative + interaction as a full major, not a side hobby.',
+          body: 'UCLA Design Media Arts is a competitive B.A. in the School of the Arts. Declaration requires a portfolio review.',
+          cites: [
+            ['1', 'UCLA Design Media Arts', '<a href="#">dma.ucla.edu</a> — portfolio-reviewed undergraduate major.']
+          ]
+        }
+      ],
+      'explore-firstgen': [
+        {
+          id: 'aap-peer-learning',
+          pathTag: 'firstgen-peer',
+          title: 'Enroll in AAP Peer Learning for CS 31',
+          eyebrow: 'Signal',
+          when: 'Winter 2027 (take CS 31)',
+          effort: '2 hrs/wk · free',
+          deadline: 'Sign up Week 1 of CS 31 quarter',
+          why: 'AAP\'s Peer Learning Facilitators (PLFs) are upperclass students who\'ve aced the course. Free, small-group, and they grade your work with you. Single biggest leg-up for a first-gen CS 31 student.',
+          body: 'AAP PLFs hold 4–6 person weekly sessions for CS 31, Math 31A/B/33A, Chem 14A, and more. AAP serves ~6,000 undergrads.',
+          cites: [
+            ['1', 'UCLA AAP', '<a href="#">aap.ugresearch.ucla.edu</a> — Peer Learning program; free small-group tutoring.']
+          ]
+        },
+        {
+          id: 'srp-99',
+          pathTag: 'firstgen-srp',
+          title: 'Enroll in an SRP 99 course · join a lab',
+          eyebrow: 'Signal',
+          when: 'Spring 2027',
+          effort: '~6 hrs/wk · 2 units',
+          deadline: 'PI permission needed by Week 1 Spring',
+          why: 'SRP 99 is a student research placement course for freshmen/sophomores — you join a lab, earn units, and your transcript shows "doing research." AAP counselors have direct lab intros.',
+          body: 'SRP 99 ("Student Research Program") is a 1–4 unit P/NP course. Student + PI agree on scope; student submits quarterly report.',
+          cites: [
+            ['1', 'UCLA Student Research Program', '<a href="#">ugresearch.ucla.edu</a> — SRP 99 enrollment info; low-barrier freshman research.']
+          ]
+        },
+        {
+          id: 'regents',
+          pathTag: 'firstgen-regents',
+          title: 'Apply for the Regents Scholar Society',
+          eyebrow: 'Signal',
+          when: 'Ongoing · interview Spring',
+          effort: '~3 hrs prep',
+          deadline: 'Rolling renewal; apply before sophomore year',
+          why: 'If you came in as a Regents, you already have the scholarship — the Society is the alum network, a strong résumé line, and hosts grad-school workshops.',
+          body: 'The UCLA Regents Scholars Society is the student organization for Regents Scholarship recipients — UCLA\'s most prestigious merit award.',
+          cites: [
+            ['1', 'UCLA Financial Aid · Regents', '<a href="#">financialaid.ucla.edu</a> — Regents Scholarship overview.']
+          ]
+        }
+      ],
+      'explore-consulting': [
+        {
+          id: 'bc-case',
+          pathTag: 'consulting-case',
+          title: 'Complete first BC client project',
+          eyebrow: 'Signal',
+          when: 'End of Winter 2027',
+          effort: '5 hrs/wk · 10-week project',
+          deadline: 'Deliverable Week 10',
+          why: 'Shipping a real client deck gives you the artifact for internship applications. BC alumni place heavily into tech + consulting.',
+          body: 'Client deliverables: slide deck + data analysis + recommendations, presented to client leadership.',
+          cites: [
+            ['1', 'Bruin Consulting', '<a href="#">bruinconsulting.com</a> — client project structure.']
+          ]
+        },
+        {
+          id: 'cs-stats-combo',
+          pathTag: 'consulting-stats',
+          title: 'Take CS 31 + Stats 10 + Econ 1',
+          eyebrow: 'Signal',
+          when: 'Winter 2027',
+          effort: '15 hrs/wk combined',
+          deadline: 'MyUCLA enrollment Week 9 Fall',
+          why: 'A consulting career plus a tech lean = the "tech-ready business major" profile. These three classes tell you whether Stats B.S. or Business Economics is the right home.',
+          body: 'CS 31 (C++ intro) + Stats 10 (statistical reasoning) + Econ 1 (microeconomics). Standard bridge set for the Business Econ / Math-Econ / Stats majors.',
+          cites: [
+            ['1', 'UCLA Registrar', '<a href="#">catalog.registrar.ucla.edu</a> — course descriptions and prerequisites.']
+          ]
+        },
+        {
+          id: 'declare-buseco',
+          pathTag: 'consulting-declare',
+          title: 'Declare Business Economics major',
+          eyebrow: 'Signal',
+          when: 'End of sophomore year',
+          effort: 'Admin · requires pre-reqs + GPA',
+          deadline: 'Impacted major; declaration per department policy',
+          why: 'If consulting-style work is resonating, Business Econ is UCLA\'s flagship pre-business undergrad major. Note: impacted — GPA in pre-reqs matters.',
+          body: 'UCLA Business Economics B.A. is in the Social Sciences division. Pre-reqs: Econ 1/2, Math 31A/B, Stats 10, Accounting 1A/1B.',
+          cites: [
+            ['1', 'UCLA Economics', '<a href="#">econ.ucla.edu</a> — Business Economics major requirements.']
+          ]
+        }
+      ]
+    }
+  },
+  {
+    key: 'summer',
+    stage: 'Stage 4 · Summer',
+    when: 'Summer 2027',
+    prompt: 'Pick your sophomore summer',
+    optionsBy: {
+      'research-lab': [
+        {
+          id: 'surp',
+          pathTag: 'summer-surp',
+          title: 'SURP — Summer Undergraduate Research Program',
+          eyebrow: 'Summer',
+          when: 'Jun 22 – Aug 28, 2027 (10 weeks)',
+          effort: 'Full-time research · 40 hrs/wk',
+          deadline: 'Application due Mar 2, 2027',
+          why: 'SURP is UCLA\'s flagship summer research program. Paid, full-time, with workshops on grad-school prep. By now you\'ve been in a lab since Winter — you have a PI who\'ll write you a letter.',
+          body: 'URC-Sciences Summer Program / SURP: 10-week in-person program with UCLA faculty mentor. Scholarship support via CAMP (NSF), UC LEADS, and others.',
+          cites: [
+            ['1', 'URC-Sciences SURP', '<a href="#">sciences.ugresearch.ucla.edu/programs-and-scholarships/urc-sciences-summer-program/</a> — 10-week full-time research, Jun–Aug 2027; apps due Mar 2, 2027.']
+          ]
+        },
+        {
+          id: 'reu',
+          pathTag: 'summer-reu',
+          title: 'Apply to NSF REU sites (off-campus)',
+          eyebrow: 'Summer',
+          when: 'Jun–Aug 2027',
+          effort: 'Full-time · 10 weeks',
+          deadline: 'Rolling Jan–Feb 2027',
+          why: 'Getting into a REU at another university broadens your network and is a common path for future PhD applicants. Pays for travel + stipend.',
+          body: 'NSF Research Experiences for Undergraduates: ~10-week funded research at a participating university. CS/AI REUs at Princeton, Cornell, CMU, etc.',
+          cites: [
+            ['1', 'NSF REU', '<a href="#">nsf.gov/crssprgm/reu</a> — directory of funded summer research sites.']
+          ]
+        },
+        {
+          id: 'internship',
+          pathTag: 'summer-intern',
+          title: 'ML research internship at a company lab',
+          eyebrow: 'Summer',
+          when: 'Jun–Sep 2027',
+          effort: 'Full-time · 12 weeks',
+          deadline: 'Apps Aug–Dec 2026',
+          why: 'Your lab work makes you competitive for corporate research internships (Meta FAIR, Microsoft Research, Adobe Research). Often dual-track: publish a paper + résumé bump.',
+          body: 'Target programs: Meta AI Research Intern (returns post-freshman year), Microsoft Research Undergraduate Intern, Adobe Research.',
+          cites: [
+            ['1', 'UCLA Career Center', '<a href="#">career.ucla.edu</a> — Handshake + corporate recruitment calendar.']
+          ]
+        }
+      ],
+      // Default-ish fallback for any other path — real UCLA options that apply broadly
+      '_default_': [
+        {
+          id: 'surp',
+          pathTag: 'summer-surp',
+          title: 'SURP — Summer Undergraduate Research Program',
+          eyebrow: 'Summer',
+          when: 'Jun 22 – Aug 28, 2027 (10 weeks)',
+          effort: 'Full-time research · 40 hrs/wk',
+          deadline: 'Application due Mar 2, 2027',
+          why: 'Paid, full-time, 10 weeks with a UCLA faculty mentor. The highest-signal summer a UCLA undergrad can land. Requires you to already be in a lab by Spring — you are.',
+          body: 'URC-Sciences Summer Program: in-person, 10 weeks, $5,000+ scholarship support via CAMP (NSF), UC LEADS, and other funding. 3.2+ GPA and faculty PI letter required.',
+          cites: [
+            ['1', 'URC-Sciences SURP', '<a href="#">sciences.ugresearch.ucla.edu</a> — 10-week research, Jun–Aug 2027; apps due Mar 2, 2027; 3.2 GPA minimum.']
+          ]
+        },
+        {
+          id: 'internship',
+          pathTag: 'summer-intern',
+          title: 'SWE internship — target sponsors of ACM',
+          eyebrow: 'Summer',
+          when: 'Jun–Sep 2027',
+          effort: 'Full-time · 10–12 weeks',
+          deadline: 'Apps Aug 2026 – Jan 2027',
+          why: 'ACM\'s sponsors actively recruit UCLA freshmen/sophomores: Jane Street, Hudson River Trading, Qualcomm, Lockheed Martin, Traversal. Attend the ACM career fair in Fall.',
+          body: 'Top sponsors: Jane Street (quant + SWE), Hudson River Trading (core dev), Qualcomm (systems), Lockheed Martin (SWE), Traversal (early-career). Applications open August.',
+          cites: [
+            ['1', 'ACM at UCLA sponsors', '<a href="#">uclaacm.com</a> — current corporate sponsors actively recruiting UCLA students.']
+          ]
+        },
+        {
+          id: 'self-directed',
+          pathTag: 'summer-selfdir',
+          title: 'Self-directed project + AWS Cloud Practitioner cert',
+          eyebrow: 'Summer',
+          when: 'Summer 2027',
+          effort: 'Flexible · 15 hrs/wk',
+          deadline: 'Set your own',
+          why: 'If SURP and internships don\'t pan out (common for freshmen), a shipped project + a cheap credential is a real résumé line. ACM Cloud hosts study groups for AWS CCP.',
+          body: 'Ship one substantial project (think: Chrome extension with 1,000+ users, open-source library, useful CLI tool). Pair with AWS Certified Cloud Practitioner ($100 exam).',
+          cites: [
+            ['1', 'ACM Cloud at UCLA', '<a href="#">cloud.uclaacm.com</a> — "Building the Future in the Clouds." Workshops + AWS study groups.']
+          ]
+        }
+      ]
+    }
+  },
+  {
+    key: 'capstone',
+    stage: 'Stage 5 · Year 2 capstone',
+    when: 'Fall 2027 onwards',
+    prompt: 'Set your year-2 bet',
+    optionsBy: {
+      '_default_': [
+        {
+          id: 'ursp',
+          pathTag: 'cap-ursp',
+          title: 'Apply to URSP — 3-quarter funded research',
+          eyebrow: 'Year 2',
+          when: 'AY 2027–28',
+          effort: '~10 hrs/wk in lab',
+          deadline: 'Application due Jun 16, 2027',
+          why: 'URSP is the URC-Sciences\' top scholarship for juniors/seniors — 3 quarters funded research toward a paper/thesis. Since you\'ll technically be a sophomore, you apply for your junior year and start with a clear plan.',
+          body: 'URSP funds research during the academic year. Juniors eligible for up to $4,500; seniors up to $6,000. Requires: declared major, faculty PI letter, research plan.',
+          cites: [
+            ['1', 'URC-Sciences URSP', '<a href="#">sciences.ugresearch.ucla.edu/programs-and-scholarships/ursp/</a> — 3-quarter scholarship; apps open May, due Jun 16.']
+          ]
+        },
+        {
+          id: 'paper-submission',
+          pathTag: 'cap-paper',
+          title: 'Co-author submission to a workshop (ML/HCI)',
+          eyebrow: 'Year 2',
+          when: 'AY 2027–28',
+          effort: 'Intense 6–12 weeks',
+          deadline: 'Depends on venue (varies)',
+          why: 'A co-author line, even on a workshop paper, is the résumé upgrade everyone tells first-gen students is "impossible as an undergrad." It\'s not — by year 2 in a lab, co-authoring a workshop submission is realistic.',
+          body: 'Accessible workshop venues for undergrads: NeurIPS workshops, ACL Student Research Workshop, CHI Late-Breaking Work. Your PI will have a target venue.',
+          cites: [
+            ['1', 'UCLA NLP group', '<a href="#">uclanlp.github.io</a> — Prof. Kai-Wei Chang\'s NLP lab, active in ACL/EMNLP.'],
+            ['2', 'UCLA CS News', '<a href="#">cs.ucla.edu</a> — undergrad co-authorships featured regularly.']
+          ]
+        },
+        {
+          id: 'pilot-org',
+          pathTag: 'cap-found',
+          title: 'Start / co-lead a student initiative',
+          eyebrow: 'Year 2',
+          when: 'AY 2027–28',
+          effort: '6 hrs/wk',
+          deadline: 'Propose now; launch Fall 2027',
+          why: 'Founding/co-leading something is the most leverage you can generate — it\'s your story, your team, your impact metric. Past examples: ACM JEDI (Justice/Equity/Diversity/Inclusion), ACM Impact, a new AAP student group.',
+          body: 'ACM at UCLA actively sponsors new initiatives — recent adds: Dev Team, Impact, JEDI, Quantum. Pitch to ACM board or AAP program staff.',
+          cites: [
+            ['1', 'ACM at UCLA Initiatives', '<a href="#">uclaacm.com</a> — Dev Team, Impact, JEDI, Quantum; recent student-founded initiatives.']
+          ]
+        }
+      ]
+    }
+  }
+];
+
+// ============================================================
+// STATE + RENDER
+// ============================================================
+const state = {
+  locked: [],
+  openPromptIdx: 0,
+  selectedChoice: null,
+  rotations: {}, // stable random rotations by element key
+  justLockedIdx: -1, // which locked stage just got locked (plays sticky animation once)
+  checked: {}, // stageIdx -> Set of todo indexes that are checked
+  confirmed: false, // Phase 1 (build plan) -> Phase 2 (execute): todos enabled
+  landed: {}, // stageIdx -> true once that stage's sticky has "landed" on its card
+  justLandedIdx: -1 // which stage just finished all todos (plays fly-to-card animation)
+};
+
+const stagesEl = document.getElementById('stages');
+const panelEl = document.getElementById('panel');
+const resetBtn = document.getElementById('reset-btn');
+
+// ---------- Rotation helper (stable per key) ----------
+function rot(key) {
+  if (state.rotations[key] == null) {
+    state.rotations[key] = (Math.random() * 3 - 1.5);
+  }
+  return state.rotations[key];
+}
+
+// Stable random rotation in [min, max] range, persisted per key
+function rotCustom(key, min, max) {
+  if (state.rotations[key] == null) {
+    state.rotations[key] = min + Math.random() * (max - min);
+  }
+  return state.rotations[key];
+}
+
+// ---------- perfect-freehand red-ink helpers ----------
+const PF = window; // getStroke is global as `getStroke`
+function pfPath(points, opts = {}) {
+  const stroke = getStroke(points, {
+    size: opts.size || 3.5,
+    thinning: opts.thinning ?? 0.55,
+    smoothing: 0.6,
+    streamline: 0.55,
+    easing: (t) => t,
+    simulatePressure: true,
+    last: true,
+    start: { taper: opts.startTaper ?? 12, cap: true },
+    end:   { taper: opts.endTaper ?? 18,   cap: true },
+  });
+  if (!stroke.length) return '';
+  const d = stroke.reduce((acc, [x, y], i, arr) => {
+    if (i === 0) return `M ${x.toFixed(2)} ${y.toFixed(2)}`;
+    return acc + ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }, '');
+  return d + ' Z';
+}
+
+// Hand-drawn underline: wobbly line with optional double stroke
+function freehandUnderline(w, { double = false, seed = 1 } = {}) {
+  const rng = seededRng(seed);
+  const pts = [];
+  const steps = Math.max(20, Math.floor(w / 8));
+  for (let i = 0; i <= steps; i++) {
+    const x = (i / steps) * w;
+    const y = 6 + (rng() - 0.5) * 1.6 + Math.sin(i * 0.7) * 0.6;
+    const p = Math.max(0.25, 1 - Math.abs(i/steps - 0.5) * 1.4);
+    pts.push([x, y, p]);
+  }
+  let svg = `<path d="${pfPath(pts, { size: 3.2, startTaper: 20, endTaper: 28 })}" fill="#c94c3a"/>`;
+  if (double) {
+    const pts2 = pts.map(([x, y, p]) => [x + (rng()-0.5)*2, y + 5 + (rng()-0.5)*1.2, p]);
+    svg += `<path d="${pfPath(pts2, { size: 2.8, startTaper: 16, endTaper: 22 })}" fill="#c94c3a"/>`;
+  }
+  return svg;
+}
+
+// Circle drawn around text (one loose freehand loop)
+function freehandCircle(w, h, seed = 1) {
+  const rng = seededRng(seed);
+  const cx = w/2, cy = h/2;
+  const rx = w/2 - 4, ry = h/2 - 4;
+  const pts = [];
+  const turns = 1.05;
+  const steps = 80;
+  const startA = rng() * Math.PI * 2;
+  for (let i = 0; i <= steps; i++) {
+    const t = i/steps;
+    const a = startA + t * Math.PI * 2 * turns;
+    const wob = 1 + (rng()-0.5) * 0.05;
+    const x = cx + Math.cos(a) * rx * wob;
+    const y = cy + Math.sin(a) * ry * wob;
+    const p = 0.4 + Math.sin(t * Math.PI) * 0.6;
+    pts.push([x, y, p]);
+  }
+  return `<path d="${pfPath(pts, { size: 3.4, startTaper: 14, endTaper: 22 })}" fill="#c94c3a"/>`;
+}
+
+// Curved arrow from (x1,y1) to (x2,y2) with head
+function freehandArrow(x1, y1, x2, y2, { curve = 0.3, seed = 1 } = {}) {
+  const rng = seededRng(seed);
+  const dx = x2 - x1, dy = y2 - y1;
+  const mx = (x1+x2)/2 - dy * curve;
+  const my = (y1+y2)/2 + dx * curve;
+  const pts = [];
+  const steps = 40;
+  for (let i = 0; i <= steps; i++) {
+    const t = i/steps;
+    const u = 1 - t;
+    const x = u*u*x1 + 2*u*t*mx + t*t*x2 + (rng()-0.5)*0.6;
+    const y = u*u*y1 + 2*u*t*my + t*t*y2 + (rng()-0.5)*0.6;
+    const p = 0.3 + t * 0.8;
+    pts.push([x, y, p]);
+  }
+  // arrow head: two short strokes from tip
+  const ang = Math.atan2(y2 - my, x2 - mx);
+  const headLen = 12;
+  const h1 = [x2 - Math.cos(ang - 0.4) * headLen, y2 - Math.sin(ang - 0.4) * headLen];
+  const h2 = [x2 - Math.cos(ang + 0.4) * headLen, y2 - Math.sin(ang + 0.4) * headLen];
+  const head1 = [[h1[0], h1[1], 0.3], [x2, y2, 0.9]];
+  const head2 = [[h2[0], h2[1], 0.3], [x2, y2, 0.9]];
+  return `
+    <path d="${pfPath(pts, { size: 3.2, startTaper: 10, endTaper: 4 })}" fill="#c94c3a"/>
+    <path d="${pfPath(head1, { size: 3, startTaper: 8, endTaper: 2 })}" fill="#c94c3a"/>
+    <path d="${pfPath(head2, { size: 3, startTaper: 8, endTaper: 2 })}" fill="#c94c3a"/>
+  `;
+}
+
+// Checkmark in a box
+function freehandCheck(size = 22, seed = 1) {
+  const rng = seededRng(seed);
+  const pts = [
+    [size*0.22, size*0.52, 0.4],
+    [size*0.32, size*0.60, 0.6],
+    [size*0.45, size*0.75, 0.9],
+    [size*0.78, size*0.25, 0.5],
+  ].map(([x,y,p]) => [x + (rng()-0.5)*0.8, y + (rng()-0.5)*0.8, p]);
+  return `<path d="${pfPath(pts, { size: 3.4, startTaper: 10, endTaper: 16 })}" fill="#c94c3a"/>`;
+}
+
+// X (close)
+function freehandX(size = 22, seed = 1) {
+  const rng = seededRng(seed);
+  const p = 4;
+  const stroke1 = [
+    [p + (rng()-0.5)*0.6, p + (rng()-0.5)*0.6, 0.3],
+    [size-p + (rng()-0.5)*0.6, size-p + (rng()-0.5)*0.6, 0.9],
+  ];
+  const stroke2 = [
+    [size-p + (rng()-0.5)*0.6, p + (rng()-0.5)*0.6, 0.3],
+    [p + (rng()-0.5)*0.6, size-p + (rng()-0.5)*0.6, 0.9],
+  ];
+  return `
+    <path d="${pfPath(stroke1, { size: 3.2, startTaper: 8, endTaper: 14 })}" fill="#c94c3a"/>
+    <path d="${pfPath(stroke2, { size: 3.2, startTaper: 8, endTaper: 14 })}" fill="#c94c3a"/>
+  `;
+}
+
+// Highlighter wash behind choice text
+function freehandHighlighter(w, h, seed = 1) {
+  const rng = seededRng(seed);
+  const pts = [];
+  const steps = Math.max(14, Math.floor(w / 12));
+  for (let i = 0; i <= steps; i++) {
+    const x = (i/steps) * w;
+    const y = h/2 + (rng()-0.5) * 1.5;
+    pts.push([x, y, 1]);
+  }
+  const stroke = getStroke(pts, {
+    size: h * 0.9,
+    thinning: 0.15,
+    smoothing: 0.8,
+    streamline: 0.7,
+    simulatePressure: false,
+    start: { taper: 30, cap: true },
+    end:   { taper: 40, cap: true },
+  });
+  if (!stroke.length) return '';
+  const d = stroke.reduce((acc, [x, y], i) => i === 0 ? `M ${x} ${y}` : acc + ` L ${x} ${y}`, '') + ' Z';
+  return `<path d="${d}" fill="#f4d35e" fill-opacity="0.5"/>`;
+}
+
+// Squiggly divider line
+function freehandSquiggle(w, seed = 1) {
+  const rng = seededRng(seed);
+  const pts = [];
+  const steps = Math.max(30, Math.floor(w / 6));
+  for (let i = 0; i <= steps; i++) {
+    const x = (i/steps) * w;
+    const y = 6 + Math.sin(i * 0.45) * 3 + (rng()-0.5) * 0.6;
+    const p = Math.max(0.3, 1 - Math.abs(i/steps - 0.5) * 1.2);
+    pts.push([x, y, p]);
+  }
+  return `<path d="${pfPath(pts, { size: 2.6, startTaper: 20, endTaper: 24 })}" fill="#c94c3a"/>`;
+}
+
+// Empty box (square) freehand — for choice checkbox
+function freehandBox(size = 22, seed = 1) {
+  const rng = seededRng(seed);
+  const p = 2;
+  const a = [p + (rng()-0.5)*0.6, p + (rng()-0.5)*0.6];
+  const b = [size-p + (rng()-0.5)*0.6, p + (rng()-0.5)*0.6];
+  const c = [size-p + (rng()-0.5)*0.6, size-p + (rng()-0.5)*0.6];
+  const d = [p + (rng()-0.5)*0.6, size-p + (rng()-0.5)*0.6];
+  const loop = [a, b, c, d, a].map((pt, i) => [pt[0], pt[1], 0.5 + (i%2)*0.3]);
+  return `<path d="${pfPath(loop, { size: 2.8, startTaper: 6, endTaper: 10 })}" fill="#1e3a5f"/>`;
+}
+
+// Freehand strikethrough line, used for done todos
+function freehandStrike(width, seed = 1) {
+  const rng = seededRng(seed);
+  const pts = [];
+  const n = Math.max(3, Math.floor(width / 40));
+  for (let i = 0; i <= n; i++) {
+    const x = (i / n) * width;
+    const y = 4 + (rng() - 0.5) * 1.5;
+    pts.push([x, y, 0.5 + (rng() - 0.5) * 0.3]);
+  }
+  return `<path d="${pfPath(pts, { size: 2.4, startTaper: 8, endTaper: 14 })}" fill="#c94c3a"/>`;
+}
+
+// Seeded RNG
+function seededRng(seed) {
+  let s = seed * 2654435761 | 0;
+  return () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------- rough.js helpers (structural only) ----------
+function roughRect(svgEl, w, h, seed, { fill = 'none', stroke = '#1e3a5f', dashed = false } = {}) {
+  const rc = rough.svg(svgEl);
+  const opts = {
+    roughness: 1.8,
+    bowing: 1.5,
+    strokeWidth: 2.2,
+    stroke,
+    seed,
+    fill: fill === 'none' ? undefined : fill,
+    fillStyle: 'hachure',
+    hachureAngle: -35,
+    hachureGap: 6,
+  };
+  if (dashed) opts.strokeLineDash = [8, 6];
+  const node = rc.rectangle(2, 2, Math.max(10, w - 4), Math.max(10, h - 4), opts);
+  svgEl.appendChild(node);
+}
+
+function roughDashedLine(svgEl, x1, y1, x2, y2, seed) {
+  const rc = rough.svg(svgEl);
+  const node = rc.line(x1, y1, x2, y2, {
+    roughness: 2.0,
+    bowing: 2,
+    strokeWidth: 2.4,
+    stroke: '#1e3a5f',
+    seed,
+    strokeLineDash: [9, 7],
+  });
+  svgEl.appendChild(node);
+}
+
+function optionsForStage(stageIdx) {
+  const stage = STAGES[stageIdx];
+  if (stageIdx === 0) return stage.optionsBy['_root_'];
+  const prev = state.locked[stageIdx - 1];
+  if (!prev) return [];
+  const byTag = stage.optionsBy[prev.option.pathTag];
+  if (byTag) return byTag;
+  return stage.optionsBy['_default_'] || [];
+}
+
+// Derive a small to-do checklist for each option. If the option has an
+// explicit `todos` array, use it; otherwise synthesize 3 sensible first
+// actions from the deadline / effort / body metadata.
+function todosForOption(option, stageIdx) {
+  if (option.todos && option.todos.length) return option.todos;
+  const todos = [];
+  if (option.deadline && option.deadline.toLowerCase() !== 'no app · open drop-in') {
+    todos.push(`Add deadline to calendar: ${option.deadline}`);
+  }
+  todos.push(`Block ${option.effort.split('·')[0].trim()} on schedule`);
+  // Stage-specific first actions
+  if (stageIdx === 0) {
+    todos.push('Book a College advisor / AAP counselor meeting');
+  } else if (stageIdx === 1) {
+    todos.push('Find the General Meeting date + RSVP');
+  } else if (stageIdx === 2) {
+    todos.push('Draft application / intro email');
+  } else if (stageIdx === 3) {
+    todos.push('Email 3 potential mentors / PIs this week');
+  } else {
+    todos.push('Write 1-line progress note each Friday');
+  }
+  return todos;
+}
+
+// Tiny HTML escape for user-entered / data strings
+function escapeAttr(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function render() {
+  stagesEl.innerHTML = '';
+  const nextStageIdx = state.locked.length;
+
+  // Render locked stages
+  state.locked.forEach((lock, i) => {
+    const stage = STAGES[i];
+    const r = rot(`locked-${i}`);
+    // Sticky rotation & tape rotation, persisted per-stage
+    const noteRot = rotCustom(`sticky-${i}`, -4, 4);
+    const tapeRot = rotCustom(`tape-${i}`, -6, 2);
+    const isJustLocked = state.justLockedIdx === i;
+    const stickyTitle = lock.option.title;
+    const todos = todosForOption(lock.option, i);
+    const checkedSet = state.checked[i] || new Set();
+    const doneCount = Array.from(checkedSet).filter(ti => ti < todos.length).length;
+    const totalTodos = todos.length;
+    const isAllDone = doneCount === totalTodos && totalTodos > 0;
+
+    // Short description = first sentence of option.body (fallback to why).
+    const bodySrc = (lock.option.body || lock.option.why || '').trim();
+    const firstSentence = bodySrc.split(/(?<=[.!?])\s+/)[0] || '';
+    const shortDesc = firstSentence.length > 140 ? firstSentence.slice(0, 138) + '…' : firstSentence;
+
+    // Category index drives the tag/underline/count color
+    const catIdx = i; // stage index maps 1:1 to category color
+
+    // Freehand title underline, category-tinted (uses pfPath + a seeded wobble)
+    const ulW = 160;
+    const ulSeed = (i + 3) * 17;
+    const ulRng = seededRng(ulSeed);
+    const ulPts = [];
+    const ulSteps = 22;
+    for (let s = 0; s <= ulSteps; s++) {
+      const x = (s / ulSteps) * ulW;
+      const y = 6 + (ulRng() - 0.5) * 1.4 + Math.sin(s * 0.6) * 0.4;
+      const pr = Math.max(0.3, 1 - Math.abs(s/ulSteps - 0.5) * 1.2);
+      ulPts.push([x, y, pr]);
+    }
+    const ulColor = `var(--cat-${catIdx}-d)`;
+    const titleUl = `<svg class="node__title-ul" preserveAspectRatio="none" viewBox="0 0 ${ulW} 12"><path d="${pfPath(ulPts, { size: 2.8, startTaper: 18, endTaper: 24 })}" fill="${ulColor}" opacity="0.7"/></svg>`;
+
+    // Phase 1: minimal locked card (no todos visible).
+    // Phase 2 (confirmed): card expands with checkable todos.
+    // Landed: once all todos are done, the sticky lands on top of this card.
+    const showTodos = state.confirmed;
+    const hasLanded = !!state.landed[i];
+    const isJustLanded = state.justLandedIdx === i;
+    stagesEl.insertAdjacentHTML('beforeend', `
+      <div class="tl__stage-lbl" data-stage-lbl="${i}">${stage.stage}</div>
+      <div class="tl__row ${hasLanded || isJustLanded ? 'tl__row--landed' : ''}" data-row-idx="${i}">
+        ${renderMarginalia(i, 'locked')}
+        <div class="node node--locked ${hasLanded ? 'node--done' : ''}" data-locked-wrap="${i}"
+             style="--rot: ${r}deg; --catL: var(--cat-${catIdx}); --catD: var(--cat-${catIdx}-d);">
+          <svg class="node__shape" data-rough-locked="${i}"></svg>
+          <svg class="node__check" viewBox="0 0 36 36"></svg>
+          <div class="node__inner">
+            <button class="node__reopen" data-locked-idx="${i}" aria-label="${state.confirmed ? 'View stage info' : 'Reopen stage'}">
+              <div class="node__period">${escapeAttr(stage.when)}</div>
+              <h3 class="node__title-card">
+                ${escapeAttr(lock.option.title)}
+                ${titleUl}
+              </h3>
+              ${shortDesc ? `<p class="node__desc">${escapeAttr(shortDesc)}</p>` : ''}
+              <div class="node__meta">
+                <span class="node__tag">${escapeAttr(lock.option.eyebrow)}</span>
+                <span class="node__status ${isAllDone ? 'node__status--done' : 'node__status--soon'}">
+                  ${!state.confirmed
+                    ? '<span class="node__status-check">✓</span>Locked'
+                    : isAllDone
+                      ? '<span class="node__status-check">✓</span>Done'
+                      : '→ In progress'}
+                </span>
+                ${state.confirmed ? `<span class="node__count">${doneCount}/${totalTodos} tasks</span>` : ''}
+              </div>
+            </button>
+            ${showTodos ? `
+            <div class="node__todos">
+              <div class="node__todos-lbl">next steps</div>
+              ${todos.map((t, ti) => {
+                const isDone = checkedSet.has(ti);
+                return `
+                <button class="node__todo ${isDone ? 'node__todo--done' : ''}"
+                        data-todo="${i}:${ti}">
+                  <span class="node__todo__box"><svg viewBox="0 0 22 22" data-todo-box="${i}:${ti}:${isDone?1:0}"></svg></span>
+                  <span class="node__todo__txt">
+                    <svg class="node__todo__strike" data-todo-strike="${i}:${ti}"></svg>
+                    ${escapeAttr(t)}
+                  </span>
+                </button>`;
+              }).join('')}
+            </div>` : ''}
+          </div>
+          ${hasLanded || isJustLanded ? `
+            <div class="sticky sticky--landed ${isJustLanded ? 'sticky--landing' : ''}"
+                 data-sticky-landed="${i}"
+                 style="--note-rot:${noteRot}deg; --tape-rot:${tapeRot}deg;">
+              <span class="sticky__txt">${stickyTitle}</span>
+              <span class="sticky__signed">— M ✓</span>
+              <span class="sticky__kicker sticky__kicker--done">done!</span>
+            </div>` : ''}
+        </div>
+      </div>
+    `);
+  });
+
+  // Current open stage
+  if (state.openPromptIdx >= 0 && state.openPromptIdx === nextStageIdx) {
+    const stage = STAGES[state.openPromptIdx];
+    const opts = optionsForStage(state.openPromptIdx);
+    const r = rot(`choices-${state.openPromptIdx}`);
+    stagesEl.insertAdjacentHTML('beforeend', `
+      <div class="tl__stage-lbl">${stage.stage}</div>
+      <div class="tl__row">
+        ${renderMarginalia(state.openPromptIdx, 'open')}
+        <div class="choices" style="--rot: ${r}deg;" data-choices-idx="${state.openPromptIdx}">
+          <svg class="choices__shape" data-rough-choices></svg>
+          <div class="choices__inner">
+            <div class="choices__hd">
+              <span>Choose one
+                <svg class="choices__hd-underline"></svg>
+              </span>
+              <button class="choices__close" data-close-choices>
+                <svg viewBox="0 0 22 22"></svg>
+              </button>
+            </div>
+            ${opts.map((o, i) => {
+              const isSel = state.selectedChoice && state.selectedChoice.option.id === o.id;
+              return `
+              <button class="choice ${isSel ? 'is-selected' : ''}" data-choice-idx="${i}"
+                      style="--catL: var(--cat-${state.openPromptIdx}); --catD: var(--cat-${state.openPromptIdx}-d);">
+                <span class="choice__box"><svg viewBox="0 0 22 22"></svg></span>
+                <span class="choice__text">
+                  <svg class="choice__highlight"></svg>
+                  <span class="choice__text-inner">${escapeAttr(o.title)}</span>
+                  <span class="choice__meta">
+                    <span class="choice__chip">${escapeAttr(o.eyebrow)}</span>
+                    <span class="choice__when">${escapeAttr(o.when)}</span>
+                  </span>
+                </span>
+              </button>
+            `}).join('')}
+          </div>
+        </div>
+      </div>
+    `);
+  } else if (nextStageIdx < STAGES.length) {
+    const stage = STAGES[nextStageIdx];
+    const r = rot(`prompt-${nextStageIdx}`);
+    // Timeline-card-style eyebrow/title for consistency. Wobble underline
+    // uses the same category-tinted scheme as locked nodes.
+    const pCat = nextStageIdx;
+    const pUlW = 180;
+    const pRng = seededRng((nextStageIdx + 5) * 19);
+    const pPts = [];
+    for (let s = 0; s <= 22; s++) {
+      const x = (s / 22) * pUlW;
+      const y = 6 + (pRng() - 0.5) * 1.4 + Math.sin(s * 0.6) * 0.4;
+      const pr = Math.max(0.3, 1 - Math.abs(s/22 - 0.5) * 1.2);
+      pPts.push([x, y, pr]);
+    }
+    const pUl = `<svg class="prompt__title-ul" preserveAspectRatio="none" viewBox="0 0 ${pUlW} 12"><path d="${pfPath(pPts, { size: 2.8, startTaper: 18, endTaper: 24 })}" fill="var(--cat-${pCat}-d)" opacity="0.55"/></svg>`;
+    stagesEl.insertAdjacentHTML('beforeend', `
+      <div class="tl__stage-lbl">${stage.stage}</div>
+      <div class="tl__row">
+        ${renderMarginalia(nextStageIdx, 'open')}
+        <button class="prompt prompt--card" data-open-stage="${nextStageIdx}"
+                style="--rot: ${r}deg; --catL: var(--cat-${pCat}); --catD: var(--cat-${pCat}-d);">
+          <svg class="prompt__shape" data-rough-prompt></svg>
+          <div class="prompt__inner">
+            <div class="prompt__period">${escapeAttr(stage.when)}</div>
+            <h3 class="prompt__title-card">
+              ${escapeAttr(stage.prompt)}
+              ${pUl}
+            </h3>
+            <div class="prompt__meta">
+              <span class="prompt__tag">${escapeAttr(stage.stage.split('·')[1]?.trim() || stage.stage)}</span>
+              <span class="prompt__status">→ not decided yet</span>
+              <span class="prompt__count">3 options</span>
+            </div>
+            <div class="prompt__cta">↓ tap to see three options</div>
+          </div>
+        </button>
+      </div>
+    `);
+  } else {
+    const r = rot('final');
+    stagesEl.insertAdjacentHTML('beforeend', `
+      <div class="tl__stage-lbl">Plan complete!</div>
+      <div class="tl__row">
+        <div class="node" style="--rot: ${r}deg;">
+          <svg class="node__shape" data-rough-final></svg>
+          <div class="node__inner">
+            <div class="node__eyebrow">pathway ready</div>
+            <div class="node__title">5 stages locked. Review, export, or reopen any step to rebranch.</div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  decorate();
+  wireEvents();
+}
+
+
+
+// Marginalia rotates by stage index, but only appears on the CURRENT
+// (open prompt or choices) row — so "← start here" always points to
+// the action the user should take next, never gets orphaned next to a
+// locked decision.
+const MARGINALIA = [
+  { text: 'start here →', rot: -4, top: 14 },
+  { text: 'pick one →', rot: -4, top: 14 },
+  { text: 'keep going →', rot: -3, top: 14 },
+  { text: 'ask advisor →', rot: -3, top: 16 },
+  { text: 'last one →', rot: -4, top: 14 },
+];
+function renderMarginalia(idx, kind /* 'locked' | 'open' */) {
+  // Locked rows get a subtle small checkmark instead of call-to-action.
+  if (kind === 'locked') return '';
+  const m = MARGINALIA[Math.min(idx, MARGINALIA.length - 1)];
+  if (!m) return '';
+  return `<div class="marginalia marginalia--right" style="--rot: ${m.rot}deg; top: ${m.top}px; transform: rotate(${m.rot}deg);">${m.text}</div>`;
+}
+
+// Decorate with rough.js (structural) and perfect-freehand (red ink)
+function decorate() {
+  // root underline (red freehand double)
+  const rootEl = document.querySelector('[data-root-underline]');
+  if (rootEl && !rootEl.dataset.decorated) {
+    rootEl.dataset.decorated = '1';
+    const w = rootEl.offsetWidth;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${w} 18`);
+    svg.style.cssText = `position:absolute;left:0;bottom:-8px;width:${w}px;height:18px;overflow:visible;`;
+    svg.innerHTML = freehandUnderline(w, { double: true, seed: 11 });
+    rootEl.style.position = 'relative';
+    rootEl.appendChild(svg);
+  }
+  // root arrow from YOU ARE HERE toward first stage label
+  const rootArrow = document.getElementById('root-arrow');
+  if (rootArrow && !rootArrow.dataset.decorated) {
+    rootArrow.dataset.decorated = '1';
+    rootArrow.innerHTML = freehandArrow(50, 10, 18, 58, { curve: 0.35, seed: 33 });
+  }
+  // Empty-panel arrow
+  const emptyArrow = document.getElementById('empty-arrow');
+  if (emptyArrow && !emptyArrow.dataset.decorated) {
+    emptyArrow.dataset.decorated = '1';
+    emptyArrow.innerHTML = freehandArrow(72, 20, 10, 60, { curve: 0.4, seed: 7 });
+  }
+
+  // Rough.js: locked-node rectangle
+  document.querySelectorAll('[data-rough-locked]').forEach(svg => {
+    const parent = svg.closest('.node');
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = w + 'px'; svg.style.height = h + 'px';
+    svg.innerHTML = '';
+    roughRect(svg, w, h, parseInt(svg.dataset.roughLocked) + 101, { stroke: '#1e3a5f' });
+  });
+  // Perfect-freehand: check mark on each locked node
+  document.querySelectorAll('.node--locked .node__check').forEach((svg, i) => {
+    svg.innerHTML = freehandCheck(36, i + 42);
+  });
+
+  // Rough.js: final card rectangle
+  document.querySelectorAll('[data-rough-final]').forEach(svg => {
+    const parent = svg.closest('.node');
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = w + 'px'; svg.style.height = h + 'px';
+    svg.innerHTML = '';
+    roughRect(svg, w, h, 999, { stroke: '#c94c3a' });
+  });
+
+  // Rough.js: prompt rectangle (dashed)
+  document.querySelectorAll('[data-rough-prompt]').forEach(svg => {
+    const parent = svg.closest('.prompt');
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = w + 'px'; svg.style.height = h + 'px';
+    svg.innerHTML = '';
+    roughRect(svg, w, h, 55, { stroke: '#1e3a5f', dashed: true });
+  });
+
+  // Rough.js: choices container rectangle
+  document.querySelectorAll('[data-rough-choices]').forEach(svg => {
+    const parent = svg.closest('.choices');
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = w + 'px'; svg.style.height = h + 'px';
+    svg.innerHTML = '';
+    roughRect(svg, w, h, 77, { stroke: '#1e3a5f' });
+  });
+
+  // perfect-freehand: "Choose one" header underline (red)
+  document.querySelectorAll('.choices__hd-underline').forEach(svg => {
+    const w = 130;
+    svg.setAttribute('viewBox', `0 0 ${w} 14`);
+    svg.style.cssText = `position:absolute;left:0;bottom:-6px;width:${w}px;height:14px;overflow:visible;`;
+    svg.innerHTML = freehandUnderline(w, { double: false, seed: 99 });
+  });
+
+  // perfect-freehand: X close button
+  document.querySelectorAll('.choices__close svg').forEach(svg => {
+    svg.setAttribute('viewBox', '0 0 22 22');
+    svg.style.cssText = 'width:22px;height:22px;overflow:visible;';
+    svg.innerHTML = freehandX(22, 5);
+  });
+
+  // perfect-freehand: choice checkboxes (navy square) + checkmark if selected + circle if selected + highlighter
+  document.querySelectorAll('.choice').forEach((ch, idx) => {
+    const boxSvg = ch.querySelector('.choice__box svg');
+    boxSvg.setAttribute('viewBox', '0 0 22 22');
+    boxSvg.style.cssText = 'width:22px;height:22px;overflow:visible;';
+    let boxContent = freehandBox(22, idx * 13 + 5);
+    if (ch.classList.contains('is-selected')) {
+      boxContent += freehandCheck(22, idx * 13 + 77);
+    }
+    boxSvg.innerHTML = boxContent;
+
+    // highlighter wash behind the text
+    const hl = ch.querySelector('.choice__highlight');
+    if (hl) {
+      const textEl = ch.querySelector('.choice__text-inner');
+      const tw = Math.max(120, textEl ? textEl.offsetWidth : 200);
+      const th = Math.max(22, textEl ? textEl.offsetHeight : 22);
+      hl.setAttribute('viewBox', `0 0 ${tw+12} ${th+4}`);
+      hl.style.cssText = `position:absolute;left:-6px;top:-2px;width:${tw+12}px;height:${th+4}px;overflow:visible;z-index:-1;opacity:${ch.classList.contains('is-selected')?1:0};`;
+      hl.innerHTML = freehandHighlighter(tw+12, th+4, idx * 17 + 3);
+    }
+
+    // red circle around the whole selected option
+    const existing = ch.querySelector('.choice__circle');
+    if (existing) existing.remove();
+    if (ch.classList.contains('is-selected')) {
+      const w = ch.offsetWidth, h = ch.offsetHeight;
+      const circ = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      circ.classList.add('choice__circle');
+      circ.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      circ.style.cssText = `position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:2;`;
+      circ.innerHTML = freehandCircle(w, h, idx * 11 + 13);
+      ch.appendChild(circ);
+    }
+  });
+
+  // perfect-freehand: todo checklist boxes inside locked nodes
+  document.querySelectorAll('[data-todo-box]').forEach(svg => {
+    const [stageIdx, todoIdx, isDone] = svg.dataset.todoBox.split(':').map(Number);
+    const seed = stageIdx * 31 + todoIdx * 7 + 11;
+    svg.setAttribute('viewBox', '0 0 22 22');
+    svg.style.cssText = 'width:100%;height:100%;overflow:visible;';
+    let content = freehandBox(22, seed);
+    if (isDone) {
+      content += freehandCheck(22, seed + 77);
+    }
+    svg.innerHTML = content;
+  });
+
+  // perfect-freehand: strikethrough for checked todos (only visible when --done)
+  document.querySelectorAll('[data-todo-strike]').forEach(svg => {
+    const [stageIdx, todoIdx] = svg.dataset.todoStrike.split(':').map(Number);
+    const parent = svg.parentElement;
+    const btn = svg.closest('.node__todo');
+    if (!btn) return;
+    // Draw a freehand horizontal line sized to parent text width
+    const w = Math.max(60, parent.offsetWidth + 4);
+    svg.setAttribute('viewBox', `0 0 ${w} 8`);
+    svg.style.width = w + 'px';
+    svg.innerHTML = freehandStrike(w, stageIdx * 13 + todoIdx * 5 + 3);
+  });
+
+  // Freehand strike across landed-sticky title text
+  document.querySelectorAll('[data-sticky-strike]').forEach(svg => {
+    const parent = svg.closest('.sticky--landed');
+    if (!parent) return;
+    const w = parent.offsetWidth;
+    if (!w) return;
+    svg.setAttribute('viewBox', `0 0 ${w} 18`);
+    svg.innerHTML = '';
+    const seed = (parseInt(svg.dataset.stickyStrike) + 1) * 19;
+    const rng = seededRng(seed);
+    const pts = [];
+    const steps = 24;
+    for (let s = 0; s <= steps; s++) {
+      const x = (s / steps) * (w - 8) + 4;
+      const y = 9 + (rng() - 0.5) * 1.8 + Math.sin(s * 0.4) * 0.8;
+      const pr = Math.max(0.25, 1 - Math.abs(s/steps - 0.5) * 1.3);
+      pts.push([x, y, pr]);
+    }
+    svg.innerHTML = `<path d="${pfPath(pts, { size: 3.4, startTaper: 18, endTaper: 22 })}" fill="#c94c3a"/>`;
+  });
+}
+
+function drawSpine() {
+  const svg = document.getElementById('tl-spine');
+  if (!svg) return;
+  const tl = document.getElementById('tl');
+  const rows = tl.querySelectorAll('.tl__row');
+  if (rows.length < 2) { svg.innerHTML = ''; return; }
+
+  const tlRect = tl.getBoundingClientRect();
+  const firstRow = rows[0].getBoundingClientRect();
+  const lastRow = rows[rows.length - 1].getBoundingClientRect();
+
+  // spine spans vertically from bottom of row[0] to top of last row
+  const yStart = firstRow.bottom - tlRect.top - 40;
+  const yEnd = lastRow.top - tlRect.top + 10;
+  const height = Math.max(20, yEnd - yStart);
+
+  svg.style.top = (yStart + 40) + 'px';
+  svg.style.height = height + 'px';
+  svg.setAttribute('viewBox', `0 0 40 ${height}`);
+  svg.innerHTML = '';
+  roughDashedLine(svg, 20, 0, 20, height, 123);
+}
+
+function renderBoard() {
+  const totalStages = STAGES.length;
+  const lockedCount = state.locked.length;
+  const isComplete = lockedCount === totalStages;
+  const allDone = isComplete && state.locked.every((_, i) => state.landed[i]);
+
+  // Board title
+  let title, sub;
+  if (!state.confirmed) {
+    if (lockedCount === 0) {
+      title = 'Your plan';
+      sub = 'as you lock in each stage, it drops onto this board.';
+    } else if (isComplete) {
+      title = '5 stages · ready';
+      sub = 'review your plan, then confirm to start executing.';
+    } else {
+      title = `Your plan · ${lockedCount}/${totalStages}`;
+      sub = `${totalStages - lockedCount} stage${totalStages - lockedCount===1?'':'s'} to go.`;
+    }
+  } else {
+    if (allDone) {
+      title = 'Plan complete!';
+      sub = 'all five stages done. Every sticky landed.';
+    } else {
+      const donePct = state.locked.filter((_, i) => state.landed[i]).length;
+      title = `Executing · ${donePct}/${totalStages}`;
+      sub = 'check off todos on each card to retire its sticky.';
+    }
+  }
+
+  // Build slots: locked stages get stickies; empty slots are dashed placeholders
+  const slots = [];
+  for (let i = 0; i < totalStages; i++) {
+    if (i < lockedCount) {
+      const lock = state.locked[i];
+      const isJustLocked = state.justLockedIdx === i;
+      const isLanded = !!state.landed[i];
+      const isJustLanded = state.justLandedIdx === i;
+      const noteRot = rotCustom(`board-sticky-${i}`, -5, 5);
+      const tapeRot = rotCustom(`board-tape-${i}`, -8, 4);
+      if (isLanded || isJustLanded) {
+        // Sticky has flown to the card — show a ghost/echo outline on the board
+        slots.push(`
+          <div class="board__slot board__slot--retired" data-board-slot="${i}">
+            <svg class="board__slot__rough" data-rough-board-slot="${i}" preserveAspectRatio="none"></svg>
+            <div class="board__slot__lbl">retired · on card ↙</div>
+          </div>`);
+      } else {
+        slots.push(`
+          <div class="board__slot">
+            <div class="sticky sticky--board ${isJustLocked ? 'sticky--dropping' : ''}"
+                 data-sticky-idx="${i}"
+                 style="--note-rot:${noteRot}deg; --tape-rot:${tapeRot}deg;">
+              <span class="sticky__kicker">stage ${i+1}</span>
+              <span class="sticky__txt">${lock.option.title}</span>
+              <span class="sticky__signed">— M ✓</span>
+            </div>
+          </div>`);
+      }
+    } else {
+      slots.push(`
+        <div class="board__slot board__slot--empty" data-empty-slot="${i}">
+          <svg class="board__slot__rough" data-rough-board-slot="${i}" preserveAspectRatio="none"></svg>
+          <div class="board__slot__num">${i+1}</div>
+          <div class="board__slot__lbl">${STAGES[i].stage.split('·')[1]?.trim() || ''}</div>
+        </div>`);
+    }
+  }
+
+  const confirmBtnRot = rot('board-confirm-btn');
+  const showConfirm = isComplete && !state.confirmed;
+
+  panelEl.innerHTML = `
+    <div class="board">
+      <div class="board__hd">
+        <div class="board__ttl" id="board-ttl">${title}
+          <svg class="board__ttl-underline" id="board-ttl-ul"></svg>
+        </div>
+        <div class="board__sub">${sub}</div>
+      </div>
+      ${showConfirm ? `
+        <div class="board__confirm-wrap board__confirm-wrap--top">
+          <button class="btn btn--primary btn--confirm" data-action="confirm-plan" style="--rot: ${confirmBtnRot}deg;">
+            <svg class="btn__shape" data-btn-shape="primary"></svg>
+            <span class="btn__label">Confirm plan · start executing →</span>
+          </button>
+          <div class="board__confirm-note">Once confirmed, you'll check off todos on each card. Reopening locked stages is disabled.</div>
+        </div>
+      ` : state.confirmed && !allDone ? `
+        <div class="board__exec-note">
+          <span class="board__exec-note__bullet">✓</span>
+          Plan confirmed. Click todos on the left to check them off. Finish a stage's todos and its sticky lands on the card.
+        </div>
+      ` : ''}
+      <div class="board__slots">
+        ${slots.join('')}
+      </div>
+      ${allDone ? `
+        <div class="board__done-note">★ every stage executed. Full credit, Maya.</div>
+      ` : ''}
+    </div>`;
+
+  // Decorate board title underline
+  const ul = document.getElementById('board-ttl-ul');
+  const ttl = document.getElementById('board-ttl');
+  if (ul && ttl) {
+    const w = ttl.offsetWidth;
+    ul.setAttribute('viewBox', `0 0 ${w} 14`);
+    ul.style.cssText = `position:absolute;left:0;bottom:-4px;width:${w}px;height:14px;overflow:visible;`;
+    ul.innerHTML = freehandUnderline(w, { double: false, seed: 42 });
+  }
+  // Rough board slot outlines (empty + retired)
+  panelEl.querySelectorAll('[data-rough-board-slot]').forEach(svg => {
+    const parent = svg.parentElement;
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    if (!w || !h) return;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.cssText = `position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;`;
+    svg.innerHTML = '';
+    roughDashedLine(svg, 6, 6, w-6, 6, parseInt(svg.dataset.roughBoardSlot) + 300);
+    roughDashedLine(svg, w-6, 6, w-6, h-6, parseInt(svg.dataset.roughBoardSlot) + 301);
+    roughDashedLine(svg, w-6, h-6, 6, h-6, parseInt(svg.dataset.roughBoardSlot) + 302);
+    roughDashedLine(svg, 6, h-6, 6, 6, parseInt(svg.dataset.roughBoardSlot) + 303);
+  });
+  // Confirm button shape
+  panelEl.querySelectorAll('[data-btn-shape]').forEach(svg => {
+    const parent = svg.closest('.btn');
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = w + 'px'; svg.style.height = h + 'px';
+    svg.innerHTML = '';
+    roughRect(svg, w, h, 400, { stroke: '#c94c3a' });
+  });
+
+  // Wire confirm
+  const confirmBtn = panelEl.querySelector('[data-action="confirm-plan"]');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      state.confirmed = true;
+      render();
+      renderPanel();
+    });
+  }
+}
+
+function renderPanel() {
+  if (!state.selectedChoice) {
+    renderBoard();
+    return;
+  }
+  const { option, stageIdx, viewOnly } = state.selectedChoice;
+  const isReopening = !viewOnly && stageIdx < state.locked.length;
+  const willWipeCount = state.locked.length - stageIdx;
+  const rLock = rot('btn-lock');
+  const rGhost = rot('btn-ghost');
+
+  panelEl.innerHTML = `
+    <div class="panel">
+      <div class="panel__kicker">${option.eyebrow} · ${STAGES[stageIdx].stage}${viewOnly ? ' · locked' : ''}</div>
+      <div class="panel__ttl" id="panel-ttl">${option.title}
+        <svg class="panel__ttl-underline" id="panel-ttl-ul"></svg>
+      </div>
+      <div class="panel__meta">
+        <div class="panel__meta-row">
+          <span class="panel__meta-row__icon">⏰</span>
+          <span class="panel__meta-row__lbl">When</span>
+          <span class="panel__meta-row__val">${option.when}</span>
+        </div>
+        <div class="panel__meta-row">
+          <span class="panel__meta-row__icon">⚡</span>
+          <span class="panel__meta-row__lbl">Effort</span>
+          <span class="panel__meta-row__val">${option.effort}</span>
+        </div>
+        ${option.deadline ? `
+        <div class="panel__meta-row panel__meta-row--urgent">
+          <span class="panel__meta-row__icon">📅</span>
+          <span class="panel__meta-row__lbl">Deadline</span>
+          <span class="panel__meta-row__val">${option.deadline}</span>
+        </div>` : ''}
+      </div>
+      <div class="panel__sect">
+        <div class="panel__sect__lbl">Why this fits you</div>
+        <div class="panel__why">${option.why}</div>
+      </div>
+      <div class="panel__sect">
+        <div class="panel__sect__lbl">What it actually looks like</div>
+        <div class="panel__body">${option.body}</div>
+      </div>
+      <div class="panel__sect">
+        <div class="panel__sect__lbl">Sources</div>
+        <div class="panel__cites">
+          ${option.cites.map(c => `
+            <div class="panel__cite">
+              <span class="panel__cite__sup">${c[0]}</span>
+              <div class="panel__cite__body"><strong>${c[1]}</strong> — ${c[2]}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      ${isReopening && willWipeCount > 0 ? `
+        <div class="reopen-warn">
+          ⚠ Locking a different step here will unlock <strong>${willWipeCount}</strong> later step${willWipeCount===1?'':'s'}.
+        </div>
+      ` : ''}
+      <div class="panel__actions">
+        ${viewOnly ? `
+          <button class="btn btn--ghost" data-action="close" style="--rot: ${rGhost}deg;">
+            <svg class="btn__shape" data-btn-shape="ghost"></svg>
+            <span class="btn__label">← back to plan</span>
+          </button>
+        ` : `
+          <button class="btn btn--primary" data-action="lock" style="--rot: ${rLock}deg;">
+            <svg class="btn__shape" data-btn-shape="primary"></svg>
+            <span class="btn__label">Lock it in ✓</span>
+          </button>
+          <button class="btn btn--ghost" data-action="close" style="--rot: ${rGhost}deg;">
+            <svg class="btn__shape" data-btn-shape="ghost"></svg>
+            <span class="btn__label">dismiss</span>
+          </button>
+        `}
+      </div>
+    </div>`;
+
+  // Decorate panel: freehand title underline
+  const ul = document.getElementById('panel-ttl-ul');
+  const ttl = document.getElementById('panel-ttl');
+  if (ul && ttl) {
+    const w = ttl.offsetWidth;
+    ul.setAttribute('viewBox', `0 0 ${w} 14`);
+    ul.style.cssText = `position:absolute;left:0;bottom:-4px;width:${w}px;height:14px;overflow:visible;`;
+    ul.innerHTML = freehandUnderline(w, { double: false, seed: stageIdx * 7 + 3 });
+  }
+  // Rough.js rectangles around buttons
+  panelEl.querySelectorAll('[data-btn-shape]').forEach(svg => {
+    const parent = svg.closest('.btn');
+    const w = parent.offsetWidth, h = parent.offsetHeight;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.style.width = w + 'px'; svg.style.height = h + 'px';
+    svg.innerHTML = '';
+    const isPri = svg.dataset.btnShape === 'primary';
+    roughRect(svg, w, h, isPri ? 200 : 201, { stroke: isPri ? '#c94c3a' : '#6b6658' });
+  });
+
+  panelEl.querySelector('[data-action="lock"]')?.addEventListener('click', () => {
+    // Fresh rotation for the sticky on each NEW lock (so re-locking the same
+    // slot gives a slightly different angle, reinforcing the "new sticky" feel).
+    delete state.rotations[`sticky-${stageIdx}`];
+    delete state.rotations[`tape-${stageIdx}`];
+    state.locked = state.locked.slice(0, stageIdx);
+    state.locked.push({ stageIdx, option });
+    state.selectedChoice = null;
+    state.openPromptIdx = state.locked.length < STAGES.length ? state.locked.length : -1;
+    state.justLockedIdx = stageIdx;
+    render();
+    renderPanel();
+    // Clear the just-locked flag after the full drop+write animation finishes
+    // (~1200ms). Do NOT re-render when clearing — the animation is on a
+    // one-shot class; subsequent renders just won't add `--dropping` again.
+    setTimeout(() => {
+      state.justLockedIdx = -1;
+    }, 1400);
+  });
+  panelEl.querySelector('[data-action="close"]').addEventListener('click', () => {
+    state.selectedChoice = null;
+    render();
+    renderPanel();
+  });
+}
+
+function wireEvents() {
+  // Open a stage prompt
+  stagesEl.querySelectorAll('[data-open-stage]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.openPromptIdx = parseInt(el.dataset.openStage, 10);
+      state.selectedChoice = null;
+      render();
+      renderPanel();
+    });
+  });
+  // Close open choices
+  const closeBtn = stagesEl.querySelector('[data-close-choices]');
+  if (closeBtn) closeBtn.addEventListener('click', () => {
+    state.openPromptIdx = -1;
+    state.selectedChoice = null;
+    render();
+    renderPanel();
+  });
+  // Pick a choice
+  stagesEl.querySelectorAll('[data-choice-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      const opts = optionsForStage(state.openPromptIdx);
+      const option = opts[parseInt(el.dataset.choiceIdx, 10)];
+      state.selectedChoice = { stageIdx: state.openPromptIdx, option };
+      render();
+      renderPanel();
+    });
+  });
+  // Click a locked stage card:
+  //   Phase 1 (build): reopen — show picker for that stage, downstream wipes on Lock In.
+  //   Phase 2 (execute): view-only — show the stored option's info panel, no lock/wipe.
+  stagesEl.querySelectorAll('[data-locked-idx]').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.lockedIdx, 10);
+      const lock = state.locked[idx];
+      if (!lock) return;
+      if (state.confirmed) {
+        // View-only mode in Phase 2 — surface the info panel without
+        // touching state.locked or allowing a re-lock.
+        state.selectedChoice = { stageIdx: idx, option: lock.option, viewOnly: true };
+        renderPanel();
+        return;
+      }
+      // Phase 1: original reopen behavior.
+      state.openPromptIdx = idx;
+      state.selectedChoice = null;
+      state._pendingRestore = state.locked.slice(idx);
+      state.locked = state.locked.slice(0, idx);
+      render();
+      const prev = state._pendingRestore[0];
+      if (prev) {
+        state.selectedChoice = { stageIdx: idx, option: prev.option };
+        render();
+        renderPanel();
+      } else {
+        renderPanel();
+      }
+    });
+  });
+
+  // Toggle a todo check on a locked stage — don't bubble to the reopen button.
+  // Only active in Phase 2 (after Confirm).
+  stagesEl.querySelectorAll('[data-todo]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!state.confirmed) return; // gated
+      const [stageIdxStr, todoIdxStr] = el.dataset.todo.split(':');
+      const sIdx = parseInt(stageIdxStr, 10);
+      const tIdx = parseInt(todoIdxStr, 10);
+      if (!state.checked[sIdx]) state.checked[sIdx] = new Set();
+      const set = state.checked[sIdx];
+      if (set.has(tIdx)) set.delete(tIdx); else set.add(tIdx);
+
+      // Check if this completes the stage → trigger sticky-land animation
+      const lock = state.locked[sIdx];
+      if (lock && !state.landed[sIdx]) {
+        const todos = todosForOption(lock.option, sIdx);
+        const allDone = todos.every((_, ti) => set.has(ti));
+        if (allDone) {
+          // Mark "just landed" so render draws sticky on the card with landing anim.
+          // Board will render a retired-slot echo in its place.
+          state.justLandedIdx = sIdx;
+          state.landed[sIdx] = true;
+          render();
+          renderPanel();
+          setTimeout(() => { state.justLandedIdx = -1; }, 1400);
+          return;
+        }
+      }
+      // Un-checking a done stage unlands the sticky
+      if (lock && state.landed[sIdx]) {
+        const todos = todosForOption(lock.option, sIdx);
+        const stillDone = todos.every((_, ti) => set.has(ti));
+        if (!stillDone) {
+          delete state.landed[sIdx];
+        }
+      }
+      render();
+      renderPanel();
+    });
+  });
+}
+
+resetBtn.addEventListener('click', () => {
+  state.locked = [];
+  state.openPromptIdx = 0;
+  state.selectedChoice = null;
+  state.confirmed = false;
+  state.checked = {};
+  state.landed = {};
+  state.justLockedIdx = -1;
+  state.justLandedIdx = -1;
+  state.rotations = {}; // re-randomize rotations on reset
+  render();
+  renderPanel();
+});
+
+// Redraw rough/freehand on resize (they're absolute-sized)
+let resizeT;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(() => {
+    // clear decorated flags so roots redecorate
+    document.querySelectorAll('[data-decorated]').forEach(el => delete el.dataset.decorated);
+    render();
+    renderPanel();
+  }, 120);
+});
+
+// Initial render — needs fonts to load so offsetWidth is accurate
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    render();
+    renderPanel();
+  });
+} else {
+  render();
+  renderPanel();
+}
+</script>
+
+</body>
+</html>

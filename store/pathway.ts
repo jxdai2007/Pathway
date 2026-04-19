@@ -12,6 +12,8 @@ type PathwayState = {
   openPromptStageIdx: number | null;
   previewNodeId: string | null;
   justLockedStageIdx: number | null;
+  justLandedStageIdx: number | null;
+  confirmed: boolean;
   humility: string | null;
   inFlight: Record<number, InFlight>;
   requestCounter: number;
@@ -27,6 +29,8 @@ type PathwayState = {
     { requestId: string; signal: AbortSignal };
   acceptChildren: (stageIdx: number, requestId: string, children: Node[]) => boolean;
   abortExpand: (stageIdx: number) => void;
+  confirmPlan: () => void;
+  triggerLand: (stageIdx: number) => void;
   reset: () => void;
 };
 
@@ -38,6 +42,8 @@ export const usePathwayStore = create<PathwayState>()(
       openPromptStageIdx: 0,
       previewNodeId: null,
       justLockedStageIdx: null,
+      justLandedStageIdx: null,
+      confirmed: false,
       humility: null,
       inFlight: {},
       requestCounter: 0,
@@ -121,17 +127,28 @@ export const usePathwayStore = create<PathwayState>()(
         }
       },
 
+      confirmPlan: () => set({ confirmed: true }),
+
+      triggerLand: (stageIdx) => {
+        set({ justLandedStageIdx: stageIdx });
+        setTimeout(() => {
+          if (get().justLandedStageIdx === stageIdx) {
+            set({ justLandedStageIdx: null });
+          }
+        }, 1400);
+      },
+
       reset: () => {
         for (const f of Object.values(get().inFlight)) f.abort.abort();
         set({
           nodesById: {}, lockedNodeIds: [], openPromptStageIdx: 0,
-          previewNodeId: null, justLockedStageIdx: null,
-          humility: null, inFlight: {}, requestCounter: 0,
+          previewNodeId: null, justLockedStageIdx: null, justLandedStageIdx: null,
+          confirmed: false, humility: null, inFlight: {}, requestCounter: 0,
         });
       },
     }),
     {
-      name: 'pathway-state-v2',
+      name: 'pathway-state-v3',
       storage: createJSONStorage(() =>
         typeof window !== 'undefined'
           ? window.localStorage
@@ -142,6 +159,7 @@ export const usePathwayStore = create<PathwayState>()(
         lockedNodeIds: state.lockedNodeIds,
         openPromptStageIdx: state.openPromptStageIdx,
         requestCounter: state.requestCounter,
+        confirmed: state.confirmed,
       }) as any,
     }
   )
