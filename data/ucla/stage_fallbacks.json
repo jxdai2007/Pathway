@@ -1,0 +1,267 @@
+{
+  "direction": [
+    {
+      "title": "Declare CS · AI/ML lean",
+      "description": "Path into Samueli CS with AI/ML electives after CS 35L.",
+      "why_this": "Lines up pre-reqs for CS M146, CS 161, CS M148.",
+      "why_now": "Change-of-major window closes end of 3rd quarter.",
+      "estimated_time_cost": "2 hrs · admin",
+      "path_tag": "ai",
+      "eyebrow": "Direction",
+      "source_url": "https://cs.ucla.edu",
+      "cites": [
+        { "label": "UCLA CS Department", "summary": "major map + advising", "url": "https://cs.ucla.edu" }
+      ],
+      "todos": [
+        { "text": "Book a College advisor / AAP counselor meeting", "done": false },
+        { "text": "Review CS 31/32/33 pre-reqs on DARS", "done": false }
+      ]
+    },
+    {
+      "title": "Declare CS · builder/SWE lean",
+      "description": "Same CS degree, optimized for shipping products.",
+      "why_this": "Favors CS 35L, CS 118, CS 143 and project-driven electives.",
+      "why_now": "Declare by end of 3rd quarter to lock course plan.",
+      "estimated_time_cost": "2 hrs · admin",
+      "path_tag": "build",
+      "eyebrow": "Direction",
+      "source_url": "https://samueli.ucla.edu",
+      "cites": [
+        { "label": "Samueli Engineering", "summary": "change-of-major petition", "url": "https://samueli.ucla.edu" }
+      ],
+      "todos": [
+        { "text": "Book a College advisor / AAP counselor meeting", "done": false },
+        { "text": "Draft project idea list", "done": false }
+      ]
+    },
+    {
+      "title": "Stay undeclared · explore Year 1",
+      "description": "Take sampler courses across CS, cog-sci, and stats.",
+      "why_this": "Buys a quarter of signal before committing.",
+      "why_now": "GEs still count regardless of final major.",
+      "estimated_time_cost": "1 hr · planning",
+      "path_tag": "explore",
+      "eyebrow": "Direction",
+      "source_url": "https://www.registrar.ucla.edu",
+      "cites": [
+        { "label": "UCLA Registrar", "summary": "GE requirements catalog", "url": "https://www.registrar.ucla.edu" }
+      ],
+      "todos": [
+        { "text": "Sketch Fall/Winter/Spring course draft", "done": false },
+        { "text": "Attend Majors Fair", "done": false }
+      ]
+    }
+  ],
+  "community": [
+    {
+      "title": "ACM at UCLA · general body",
+      "description": "Biggest CS community on campus; onboarding GMs in Week 1-2.",
+      "why_this": "Cheapest way to meet upperclassmen + find subcommittees.",
+      "why_now": "GM Week 2 Fall; sign up Week 1.",
+      "estimated_time_cost": "2 hrs · attend GM",
+      "path_tag": "acm",
+      "eyebrow": "Community",
+      "source_url": "https://acm.cs.ucla.edu",
+      "cites": [
+        { "label": "ACM @ UCLA", "summary": "committees + events", "url": "https://acm.cs.ucla.edu" }
+      ],
+      "todos": [
+        { "text": "Find the General Meeting date + RSVP", "done": false },
+        { "text": "Join Discord", "done": false }
+      ]
+    },
+    {
+      "title": "AAP peer cohort",
+      "description": "Academic Advancement Program cohort for first-gen / underrepresented students.",
+      "why_this": "Peer-group + dedicated counselor access.",
+      "why_now": "Intake early Fall.",
+      "estimated_time_cost": "3 hrs · orientation",
+      "path_tag": "aap",
+      "eyebrow": "Community",
+      "source_url": "https://www.aap.ucla.edu",
+      "cites": [
+        { "label": "UCLA AAP", "summary": "first-gen programs", "url": "https://www.aap.ucla.edu" }
+      ],
+      "todos": [
+        { "text": "Find the General Meeting date + RSVP", "done": false },
+        { "text": "Email AAP counselor for intake", "done": false }
+      ]
+    },
+    {
+      "title": "Creative Labs",
+      "description": "Project-driven builder community — ships indie software.",
+      "why_this": "Best matched to builder/SWE lean; hands-on from day 1.",
+      "why_now": "Team formation Fall Week 3.",
+      "estimated_time_cost": "4 hrs/wk · project",
+      "path_tag": "creative-labs",
+      "eyebrow": "Community",
+      "source_url": "https://creativelabsucla.com",
+      "cites": [
+        { "label": "Creative Labs", "summary": "team formation + projects", "url": "https://creativelabsucla.com" }
+      ],
+      "todos": [
+        { "text": "Find the General Meeting date + RSVP", "done": false },
+        { "text": "Pitch or join a team", "done": false }
+      ]
+    }
+  ],
+  "signal": [
+    {
+      "title": "URFP — Undergraduate Research Fellows",
+      "description": "Structured intro to faculty-mentored research.",
+      "why_this": "Cohort + mentor pairing + stipend.",
+      "why_now": "Applications Week 2 Fall.",
+      "estimated_time_cost": "5 hrs/wk · research",
+      "path_tag": "urfp",
+      "eyebrow": "Signal",
+      "source_url": "https://www.ugresearch.ucla.edu/urfp.htm",
+      "cites": [
+        { "label": "URC — URFP", "summary": "fellowship details", "url": "https://www.ugresearch.ucla.edu/urfp.htm" }
+      ],
+      "todos": [
+        { "text": "Draft application / intro email", "done": false },
+        { "text": "Identify 2 faculty matches", "done": false }
+      ]
+    },
+    {
+      "title": "Hack on the Hill (HOTH)",
+      "description": "Campus beginner hackathon — 12-hr sprint.",
+      "why_this": "Portfolio artifact + fast credential.",
+      "why_now": "Fall Week 4.",
+      "estimated_time_cost": "12 hrs · weekend",
+      "path_tag": "hoth",
+      "eyebrow": "Signal",
+      "source_url": "https://hackonthehill.com",
+      "cites": [
+        { "label": "HOTH", "summary": "event details", "url": "https://hackonthehill.com" }
+      ],
+      "todos": [
+        { "text": "Draft application / intro email", "done": false },
+        { "text": "Recruit a 2-person team", "done": false }
+      ]
+    },
+    {
+      "title": "CS 35L · lab TA ask",
+      "description": "Contact CS 35L staff about peer-tutor roles.",
+      "why_this": "Teaching reinforces material; paid.",
+      "why_now": "Hiring Winter quarter.",
+      "estimated_time_cost": "4 hrs/wk · teach",
+      "path_tag": "cs35l-ta",
+      "eyebrow": "Signal",
+      "source_url": "https://cs.ucla.edu/teaching",
+      "cites": [
+        { "label": "CS Teaching", "summary": "peer TA hiring", "url": "https://cs.ucla.edu/teaching" }
+      ],
+      "todos": [
+        { "text": "Draft application / intro email", "done": false },
+        { "text": "Ask current CS 35L TA for pointers", "done": false }
+      ]
+    }
+  ],
+  "summer": [
+    {
+      "title": "SURP — Summer Undergraduate Research",
+      "description": "8-week funded summer research with a UCLA lab.",
+      "why_this": "Stipend + full-time research immersion.",
+      "why_now": "Apps open Winter, due early Spring.",
+      "estimated_time_cost": "40 hrs/wk · summer",
+      "path_tag": "surp",
+      "eyebrow": "Summer",
+      "source_url": "https://www.ugresearch.ucla.edu/summer.htm",
+      "cites": [
+        { "label": "URC — SURP", "summary": "program + deadlines", "url": "https://www.ugresearch.ucla.edu/summer.htm" }
+      ],
+      "todos": [
+        { "text": "Email 3 potential mentors / PIs this week", "done": false },
+        { "text": "Draft project proposal", "done": false }
+      ]
+    },
+    {
+      "title": "REU at a partner university",
+      "description": "NSF-funded summer research at a non-UCLA lab.",
+      "why_this": "Broadens network + different institutional culture.",
+      "why_now": "Apps Dec–Feb; competitive.",
+      "estimated_time_cost": "40 hrs/wk · summer",
+      "path_tag": "reu",
+      "eyebrow": "Summer",
+      "source_url": "https://www.nsf.gov/crssprgm/reu/",
+      "cites": [
+        { "label": "NSF REU", "summary": "site directory", "url": "https://www.nsf.gov/crssprgm/reu/" }
+      ],
+      "todos": [
+        { "text": "Email 3 potential mentors / PIs this week", "done": false },
+        { "text": "Shortlist 5 REU sites", "done": false }
+      ]
+    },
+    {
+      "title": "Industry internship · small team",
+      "description": "Target early-stage startups on YC WWF list.",
+      "why_this": "Shipping product > research for builder path.",
+      "why_now": "Apps open late Fall.",
+      "estimated_time_cost": "40 hrs/wk · summer",
+      "path_tag": "intern",
+      "eyebrow": "Summer",
+      "source_url": "https://www.ycombinator.com/jobs",
+      "cites": [
+        { "label": "YC Jobs", "summary": "open roles", "url": "https://www.ycombinator.com/jobs" }
+      ],
+      "todos": [
+        { "text": "Email 3 potential mentors / PIs this week", "done": false },
+        { "text": "Polish resume + portfolio", "done": false }
+      ]
+    }
+  ],
+  "capstone": [
+    {
+      "title": "URSP — honors thesis",
+      "description": "Year-long faculty-advised research thesis.",
+      "why_this": "Depth signal + writing sample for grad apps.",
+      "why_now": "Apps Spring Year 2.",
+      "estimated_time_cost": "8 hrs/wk · thesis",
+      "path_tag": "ursp",
+      "eyebrow": "Capstone",
+      "source_url": "https://www.ugresearch.ucla.edu/ursp.htm",
+      "cites": [
+        { "label": "URC — URSP", "summary": "thesis program", "url": "https://www.ugresearch.ucla.edu/ursp.htm" }
+      ],
+      "todos": [
+        { "text": "Write a 1-line progress note each Friday", "done": false },
+        { "text": "Lock advisor before Year 2 Fall", "done": false }
+      ]
+    },
+    {
+      "title": "Target a workshop paper",
+      "description": "Aim for a NeurIPS / ACL / CVPR workshop submission.",
+      "why_this": "External credential + conference exposure.",
+      "why_now": "Workshop deadlines cluster summer–fall.",
+      "estimated_time_cost": "10 hrs/wk · write + exp",
+      "path_tag": "paper",
+      "eyebrow": "Capstone",
+      "source_url": "https://aideadlin.es",
+      "cites": [
+        { "label": "AI Deadlines", "summary": "conference calendar", "url": "https://aideadlin.es" }
+      ],
+      "todos": [
+        { "text": "Write a 1-line progress note each Friday", "done": false },
+        { "text": "Pick target venue + deadline", "done": false }
+      ]
+    },
+    {
+      "title": "Found a student org",
+      "description": "Spin up a subcommittee or new org around your niche.",
+      "why_this": "Leadership signal + compounding network.",
+      "why_now": "Charter windows Fall Week 3.",
+      "estimated_time_cost": "5 hrs/wk · leadership",
+      "path_tag": "found-org",
+      "eyebrow": "Capstone",
+      "source_url": "https://www.studentorgs.ucla.edu",
+      "cites": [
+        { "label": "UCLA Student Orgs", "summary": "chartering a new org", "url": "https://www.studentorgs.ucla.edu" }
+      ],
+      "todos": [
+        { "text": "Write a 1-line progress note each Friday", "done": false },
+        { "text": "Draft 1-pager + find 2 co-founders", "done": false }
+      ]
+    }
+  ]
+}
