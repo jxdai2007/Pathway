@@ -226,16 +226,22 @@ export function Onboarding() {
     switch (step) {
       case 'welcome':
         return (
-          <div className="max-w-xl mx-auto text-center py-12">
-            <h1 className="text-display font-bold text-ink mb-3">Welcome to Pathway</h1>
-            <p className="text-body text-ink-2 mb-8 max-w-sm mx-auto">
-              Discover opportunities built around your goals, schedule, and story.
-              Takes about 2 minutes.
+          <div className="max-w-2xl mx-auto text-center py-12">
+            <div className="text-tiny uppercase tracking-wider text-ink-3 mb-3">Pathway · UCLA</div>
+            <h1 className="text-display font-bold text-ink mb-4 leading-tight">
+              The mentor who&rsquo;s been at UCLA for ten years.
+              <br />
+              <span className="text-ink-3 font-semibold">On demand. With citations.</span>
+            </h1>
+            <p className="text-body text-ink-2 mb-8 max-w-md mx-auto">
+              A few quick questions. Then we&rsquo;ll sketch your next two years as a tree you can walk through, branching on what feels right to you.
+              <br />
+              <span className="text-ink-3">Nothing leaves your device. No account.</span>
             </p>
             <button
               type="button"
               onClick={goNext}
-              className="bg-ucla-blue text-cream px-8 py-3 rounded-md text-body font-semibold hover:opacity-90 transition-opacity"
+              className="bg-ucla-blue text-cream px-8 py-3 rounded-md text-body font-semibold hover:bg-ucla-darkblue transition-colors"
             >
               Let&rsquo;s start &rarr;
             </button>
