@@ -647,7 +647,7 @@ describe('pathway store · chain model', () => {
     const s = usePathwayStore.getState();
     s.addNodes([mk('a', 'direction'), mk('b', 'community'), mk('c', 'signal')]);
     s.lockIn(0, 'a'); s.lockIn(1, 'b'); s.lockIn(2, 'c');
-    expect(s.lockedNodeIds).toEqual(['a','b','c']);
+    expect(usePathwayStore.getState().lockedNodeIds).toEqual(['a','b','c']);
     s.lockIn(1, 'b');
     expect(usePathwayStore.getState().lockedNodeIds).toEqual(['a','b']);
   });
