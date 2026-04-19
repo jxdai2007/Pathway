@@ -16,6 +16,8 @@ export function buildSystemPrompt(a: BuildArgs): string {
   const parentTag = a.parent_path_tag || 'none (first stage)';
   const { year, major_category, hours_per_week, first_gen, aid_status, mode, interests } = a.profile;
   const end_goal = (a.profile as any).end_goal;
+  const background = ((a.profile as any).background || []) as string[];
+  const name = (a.profile as any).name as string | undefined;
   return [
     `<role>`,
     `  You are Pathway, an academic roadmap mentor at UCLA who knows the specific programs,`,
@@ -32,6 +34,8 @@ export function buildSystemPrompt(a: BuildArgs): string {
     `  aid_status: ${aid_status}`,
     `  mode: ${mode}`,
     `  interests: ${interests.join(', ')}`,
+    `  background: ${background.join(', ') || '(none)'}`,
+    `  name: ${name || '(anonymous)'}`,
     `  end_goal: ${end_goal || '(undeclared)'}`,
     `</student_context>`,
     ``,
