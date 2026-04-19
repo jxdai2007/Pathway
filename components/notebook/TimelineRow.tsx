@@ -3,6 +3,7 @@ import { STAGES } from '@/lib/stages';
 import { LockedNode } from './LockedNode';
 import { PromptNode } from './PromptNode';
 import { ChoicesCard } from './ChoicesCard';
+import { StickyNote } from './StickyNote';
 import styles from './notebook.module.css';
 
 type Props = {
@@ -21,7 +22,10 @@ export function TimelineRow(p: Props) {
       <div className={styles.tlStageLbl}>{stage.stage}</div>
       <div className="mb-2 text-sm italic text-[#6b6658]">{stage.when}</div>
       {p.locked ? (
-        <LockedNode node={p.locked} stageIdx={p.stageIdx} />
+        <div className="relative">
+          <LockedNode node={p.locked} stageIdx={p.stageIdx} />
+          <StickyNote stageIdx={p.stageIdx} title={p.locked.title} />
+        </div>
       ) : p.isOpen ? (
         <ChoicesCard stageIdx={p.stageIdx} options={p.options} loading={p.loading} />
       ) : (
