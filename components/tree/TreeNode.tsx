@@ -15,8 +15,8 @@ export function TreeNode({
   onSelect?: (n: LaidOutNode) => void;
   onExpand?: (n: LaidOutNode) => void;
 }) {
-  const W = node.depth === 0 ? 220 : node.depth === 1 ? 180 : 160;
-  const H = node.depth === 0 ? 92 : node.depth === 1 ? 86 : 70;
+  const W = node.depth === 0 ? 220 : node.depth === 1 ? 180 : 170;
+  const H = node.depth === 0 ? 92 : node.depth === 1 ? 86 : 80;
   const { text: deadlineText, tone } = formatDeadline(node.deadline ?? null);
 
   const pathBorder =
@@ -40,8 +40,8 @@ export function TreeNode({
       style={{ left: node.x - W / 2, top: node.y - H / 2, width: W, height: H }}
     >
       <div className="text-tiny uppercase tracking-wider text-ink-3">{EYEBROW[node.depth] ?? 'Step'}</div>
-      <div className="text-body font-semibold leading-tight text-ink line-clamp-2">{node.title}</div>
-      {node.tagline && node.depth > 0 && (
+      <div className={`font-semibold leading-tight text-ink ${node.depth >= 2 ? 'text-meta line-clamp-3' : 'text-body line-clamp-2'}`}>{node.title}</div>
+      {node.tagline && node.depth > 0 && node.depth < 2 && (
         <div className="text-meta text-ink-3 line-clamp-1">{node.tagline}</div>
       )}
       {node.depth > 0 && !isExpanded && onExpand && (
