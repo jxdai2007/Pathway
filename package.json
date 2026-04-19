@@ -7,10 +7,12 @@
   },
   "packageManager": "npm@10.9.0",
   "scripts": {
+    "predev": "tsx scripts/validate-data.ts",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
