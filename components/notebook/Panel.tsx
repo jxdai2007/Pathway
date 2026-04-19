@@ -47,6 +47,10 @@ function DismissButton({ stageIdx, onClick }: { stageIdx: number; onClick: () =>
   );
 }
 
+function safeHost(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
+}
+
 export function Panel() {
   const nodesById = usePathwayStore((s) => s.nodesById);
   const previewId = usePathwayStore((s) => s.previewNodeId);
@@ -68,7 +72,9 @@ export function Panel() {
   const node = nodesById[previewId];
   if (!node) return <PanelEmpty />;
 
-  const stageIdx = openIdx ?? (STAGE_KEYS as readonly string[]).indexOf(node.stage_key);
+  const stageIdxRaw = openIdx ?? STAGE_KEYS.indexOf(node.stage_key);
+  if (stageIdxRaw < 0 || stageIdxRaw > 4) return <PanelEmpty />;
+  const stageIdx = stageIdxRaw;
   const isReopening = stageIdx < lockedLen;
   const willWipe = Math.max(0, lockedLen - stageIdx);
 
@@ -113,7 +119,7 @@ export function Panel() {
               <div key={i} className={styles.panelCite}>
                 <span className={styles.panelCiteSup}>{i + 1}</span>
                 <div className={styles.panelCiteBody}>
-                  <strong>{c.label}</strong> — <a href={c.url} target="_blank" rel="noreferrer">{new URL(c.url).host}</a> · {c.summary}
+                  <strong>{c.label}</strong> — <a href={c.url} target="_blank" rel="noopener noreferrer" className={styles.panelCiteLink}>{safeHost(c.url)}</a> · {c.summary}
                 </div>
               </div>
             ))}
