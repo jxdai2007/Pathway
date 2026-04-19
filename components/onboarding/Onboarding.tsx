@@ -1,486 +1,563 @@
 'use client';
-
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SlideShell } from './SlideShell';
-import { GoalSuggestions } from './GoalSuggestions';
-import { IntakeProfileSchema } from '@/lib/schemas';
+import styles from './onboarding.module.css';
+import { IntakeProfileSchema, type IntakeProfile } from '@/lib/schemas';
 import { useProfileStore } from '@/store/profile';
-import personas from '@/data/ucla/personas.json';
+import { FreehandUnderline } from '@/components/notebook/rough/FreehandUnderline';
 
-// ---- Types ----
-type YearEnum = 'freshman' | 'sophomore' | 'junior' | 'senior';
-type MajorCategoryEnum = 'stem' | 'humanities' | 'social_science' | 'undeclared';
-type AidStatusEnum = 'pell' | 'work_study' | 'none';
-type ModeEnum = 'directed' | 'partial' | 'discovery';
+const YEARS = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Grad'] as const;
+const MAJORS = ['Declared · CS', 'Declared · other STEM', 'Declared · non-STEM', 'Undeclared', 'Exploring'] as const;
+const INTERESTS = ['AI / ML', 'Web & mobile', 'Systems', 'Data science', 'Design / HCI', 'Research', 'Founding / startup', 'Teaching', 'Security'] as const;
+const BACKGROUND = ['First-gen', 'Transfer', 'International', 'Pre-med', 'Pre-law', 'Athlete', 'Working 10+ hrs/week', 'Caretaker at home'] as const;
 
-const STEPS = ['welcome', 'year', 'major', 'hours', 'aid', 'firstgen', 'interests', 'mode', 'goal', 'ready'] as const;
-type Step = typeof STEPS[number];
+type Answers = {
+  name: string;
+  year: string;
+  majorStatus: string;
+  interests: string[];
+  background: string[];
+  hoursPerWeek: number;
+  why: string;
+};
 
-// Steps that show progress dots (skip welcome + ready)
-const DOT_STEPS = STEPS.slice(1, -1); // year..mode = 8 steps
+const defaultAnswers: Answers = {
+  name: '',
+  year: '',
+  majorStatus: '',
+  interests: [],
+  background: [],
+  hoursPerWeek: 8,
+  why: '',
+};
 
-const YEAR_OPTIONS: { label: string; value: YearEnum }[] = [
-  { label: 'Freshman', value: 'freshman' },
-  { label: 'Sophomore', value: 'sophomore' },
-  { label: 'Junior', value: 'junior' },
-  { label: 'Senior', value: 'senior' },
-];
+const STORE_KEY = 'pathway.onboarding.v3';
 
-const AID_OPTIONS: { label: string; value: AidStatusEnum }[] = [
-  { label: 'Pell grant', value: 'pell' },
-  { label: 'Work-study', value: 'work_study' },
-  { label: 'No aid', value: 'none' },
-  { label: 'Prefer not to say', value: 'none' },
-];
-
-const INTEREST_OPTIONS = ['AI/ML', 'data', 'storytelling', 'math', 'teaching', 'cybersec', 'policy', 'bio', 'design'];
-
-function slugInterest(s: string): string {
-  return s.toLowerCase().replace(/\//g, '_').trim();
+function loadAnswers(): Answers {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return { ...defaultAnswers };
+    return { ...defaultAnswers, ...JSON.parse(raw) };
+  } catch (_) {
+    return { ...defaultAnswers };
+  }
 }
 
-function majorToCategory(major: string): MajorCategoryEnum {
-  if (/comput|cs|software/i.test(major)) return 'stem';
-  if (/bio|neuro|chem|physic|math|engineer/i.test(major)) return 'stem';
-  if (/econ|business/i.test(major)) return 'social_science';
-  if (/english|history|philosoph|art|literature|language/i.test(major)) return 'humanities';
-  if (/sociol|psychol|polit|anthropol/i.test(major)) return 'social_science';
-  return 'undeclared';
+function saveAnswers(a: Answers) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(a));
+  } catch (_) {}
 }
 
-const maya = personas.find((p) => p.key === 'maya')!;
+// Page IDs in order
+const PAGE_IDS = ['welcome', 'name', 'year', 'major', 'interests', 'background', 'hours', 'why', 'review'] as const;
+type PageId = typeof PAGE_IDS[number];
+const TOTAL_PAGES = PAGE_IDS.length;
+
+// Back arrow path: freehandArrow('left')
+const BACK_ARROW_D = 'M60 20 Q46 17.5 34 20.2 T8 20.4 M16 12 Q11 18 8 20.4 Q11 22 16 28';
+// Forward arrow path: freehandArrow('right')
+const NEXT_ARROW_D = 'M4 20 Q18 17.5 30 20.2 T56 20.4 M48 12 Q53 18 56 20.4 Q53 22 48 28';
 
 export function Onboarding() {
   const router = useRouter();
-  const setProfile = useProfileStore((s) => s.setProfile);
+  const [pageIdx, setPageIdx] = useState(0);
+  const [answers, setAnswersState] = useState<Answers>(() => defaultAnswers);
+  const [isEntering, setIsEntering] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [interestsHint, setInterestsHint] = useState('0/3 selected.');
+  const answersRef = useRef<Answers>(defaultAnswers);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const whyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const [step, setStep] = useState<Step>('welcome');
-  const [year, setYear] = useState<YearEnum | null>(null);
-  const [majorText, setMajorText] = useState('');
-  const [hours, setHours] = useState<number>(8);
-  const [aid, setAid] = useState<AidStatusEnum | null>(null);
-  // 'pns' = Prefer not to say (coerced to false on submit); null = unselected
-  const [firstGen, setFirstGen] = useState<boolean | 'pns' | null>(null);
-  const [interests, setInterests] = useState<string[]>([]);
-  const [mode, setMode] = useState<ModeEnum | null>(null);
-  const [goal, setGoal] = useState('');
-  const [aidLabel, setAidLabel] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const stepIndex = STEPS.indexOf(step);
-
-  const goBack = useCallback(() => {
-    if (stepIndex > 0) setStep(STEPS[stepIndex - 1]);
-  }, [stepIndex]);
-
-  const goNext = useCallback(() => {
-    if (stepIndex < STEPS.length - 1) setStep(STEPS[stepIndex + 1]);
-  }, [stepIndex]);
-
-  const autoAdvance = useCallback(() => {
-    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
-    advanceTimerRef.current = setTimeout(() => {
-      goNext();
-    }, 180);
-  }, [goNext]);
-
+  // Load from localStorage on mount
   useEffect(() => {
-    return () => {
-      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
-    };
+    const loaded = loadAnswers();
+    setAnswersState(loaded);
+    answersRef.current = loaded;
+    setInterestsHint(`${loaded.interests.length}/3 selected.`);
   }, []);
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const inTextarea = document.activeElement?.tagName === 'TEXTAREA';
-      if (e.key === 'ArrowLeft') goBack();
-      if (e.key === 'ArrowRight' && canAdvance()) goNext();
-      if (e.key === 'Enter' && !inTextarea) {
-        if (step === 'welcome') goNext();
-        else if (canAdvance()) goNext();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, goBack, goNext, year, majorText, hours, aid, firstGen, interests, mode]);
+  function setAnswers(a: Answers) {
+    answersRef.current = a;
+    setAnswersState(a);
+    saveAnswers(a);
+  }
 
-  function canAdvance(): boolean {
-    switch (step) {
+  const currentPageId: PageId = PAGE_IDS[pageIdx];
+  const isFirst = pageIdx === 0;
+  const isLast = pageIdx === TOTAL_PAGES - 1;
+
+  function validate(idx: number): boolean {
+    const id = PAGE_IDS[idx];
+    const a = answersRef.current;
+    switch (id) {
       case 'welcome': return true;
-      case 'year': return year !== null;
-      case 'major': return majorText.trim().length > 0;
+      case 'name': return !!a.name.trim();
+      case 'year': return !!a.year;
+      case 'major': return !!a.majorStatus;
+      case 'interests': return a.interests.length > 0;
+      case 'background': return true;
       case 'hours': return true;
-      case 'aid': return aid !== null;
-      case 'firstgen': return firstGen !== null; // null = unselected; true/false/'pns' all valid
-      case 'interests': return interests.length >= 1;
-      case 'mode': return mode !== null;
-      case 'goal': return true;
-      case 'ready': return true;
+      case 'why': return true;
+      case 'review': return true;
       default: return false;
     }
   }
 
-  function handleDemoMaya() {
-    const p = maya.profile as {
-      year: YearEnum; major_category: MajorCategoryEnum; first_gen: boolean;
-      aid_status: AidStatusEnum; hours_per_week: number; interests: string[];
-      mode: ModeEnum; end_goal?: string;
-    };
-    setYear(p.year);
-    setMajorText('Computer Science'); // representative major for Maya (stem)
-    setHours(p.hours_per_week);
-    setAid(p.aid_status);
-    setAidLabel(p.aid_status === 'pell' ? 'Pell grant' : p.aid_status === 'work_study' ? 'Work-study' : 'No aid');
-    setFirstGen(p.first_gen === true ? true : false);
-    // interests are already slugged in persona; convert back to display for UI
-    const displayInterests = p.interests.map((s) =>
-      s === 'ai_ml' ? 'AI/ML' : s === 'storytelling' ? 'storytelling' : s
-    );
-    setInterests(displayInterests);
-    setMode(p.mode);
-    setGoal(p.end_goal ?? '');
-    setStep('ready');
+  function goToPage(idx: number) {
+    if (idx < 0 || idx >= TOTAL_PAGES) return;
+    if (idx === pageIdx) return;
+    setIsLeaving(true);
+    setTimeout(() => {
+      setIsLeaving(false);
+      setPageIdx(idx);
+      setIsEntering(true);
+      setTimeout(() => setIsEntering(false), 420);
+    }, 220);
   }
 
-  function handleSubmit() {
-    setSubmitError(null);
-    const sluggedInterests = interests.map(slugInterest).slice(0, 3);
-    const candidate = {
-      year: year!,
-      major_category: majorToCategory(majorText),
-      first_gen: firstGen === true ? true : false,
-      aid_status: aid!,
-      hours_per_week: hours,
-      interests: sluggedInterests,
-      mode: mode!,
-      ...(goal.trim() ? { end_goal: goal.trim().slice(0, 300) } : {}),
-    };
-    const result = IntakeProfileSchema.safeParse(candidate);
-    if (!result.success) {
-      setSubmitError(result.error.issues.map((i) => i.message).join('; '));
+  function goToPageById(id: string) {
+    const i = PAGE_IDS.indexOf(id as PageId);
+    if (i >= 0) goToPage(i);
+  }
+
+  function tryAdvance() {
+    if (!validate(pageIdx)) return;
+    if (isLast) {
+      finalize();
       return;
     }
-    setProfile(result.data);
+    goToPage(pageIdx + 1);
+  }
+
+  function tryBack() {
+    if (pageIdx === 0) return;
+    goToPage(pageIdx - 1);
+  }
+
+  // Keydown handler
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName || '';
+      const inTextarea = tag === 'TEXTAREA';
+      if (inTextarea) return;
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        tryAdvance();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        tryBack();
+      } else if (e.key === 'Enter' && tag !== 'TEXTAREA' && tag !== 'INPUT') {
+        e.preventDefault();
+        tryAdvance();
+      }
+    }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageIdx]);
+
+  // Autofocus on name page
+  useEffect(() => {
+    if (currentPageId === 'name') {
+      setTimeout(() => nameInputRef.current?.focus(), 120);
+    }
+  }, [currentPageId]);
+
+  // Entry animation on mount
+  useEffect(() => {
+    setIsEntering(true);
+    setTimeout(() => setIsEntering(false), 420);
+  }, []);
+
+  function finalize() {
+    const a = answersRef.current;
+    const yearMap: Record<string, IntakeProfile['year']> = {
+      Freshman: 'freshman',
+      Sophomore: 'sophomore',
+      Junior: 'junior',
+      Senior: 'senior',
+      Grad: 'grad',
+    };
+    const majorMap: Record<string, IntakeProfile['major_category']> = {
+      'Declared · CS': 'stem',
+      'Declared · other STEM': 'stem',
+      'Declared · non-STEM': 'humanities',
+      'Undeclared': 'undeclared',
+      'Exploring': 'undeclared',
+    };
+    const major_category = majorMap[a.majorStatus] ?? 'undeclared';
+    const isDeclared = a.majorStatus.startsWith('Declared');
+    const mode: IntakeProfile['mode'] =
+      !isDeclared ? 'discovery' : (a.why.trim().length > 0 ? 'directed' : 'partial');
+    const profile: IntakeProfile = {
+      year: yearMap[a.year],
+      major_category,
+      first_gen: a.background.includes('First-gen'),
+      aid_status: 'none',
+      hours_per_week: a.hoursPerWeek,
+      interests: a.interests.slice(0, 3),
+      mode,
+      ...(a.why.trim() ? { end_goal: a.why.trim().slice(0, 300) } : {}),
+      ...(a.background.length ? { background: a.background } : {}),
+      ...(a.name.trim() ? { name: a.name.trim() } : {}),
+    };
+    const parsed = IntakeProfileSchema.safeParse(profile);
+    if (!parsed.success) {
+      console.error('profile validation failed', parsed.error.issues);
+      return;
+    }
+    useProfileStore.getState().setProfile(parsed.data);
     router.push('/pathway');
   }
 
-  // ---- Dot header ----
-  const dotIndex = DOT_STEPS.indexOf(step as typeof DOT_STEPS[number]);
-
-  function renderHeader() {
-    return (
-      <header className="flex items-center justify-between px-6 py-4 border-b border-line bg-cream">
-        <div className="flex items-center gap-1.5">
-          {DOT_STEPS.map((s, i) => {
-            let cls = 'w-2 h-2 rounded-full transition-colors ';
-            if (dotIndex < 0) {
-              cls += 'bg-line'; // welcome or ready
-            } else if (i < dotIndex) {
-              cls += 'bg-ucla-blue'; // done
-            } else if (i === dotIndex) {
-              cls += 'bg-ucla-blue opacity-100 scale-125'; // current
-            } else {
-              cls += 'bg-line'; // future
-            }
-            return <span key={s} className={cls} />;
-          })}
-        </div>
-        <button
-          type="button"
-          onClick={handleDemoMaya}
-          className="text-meta text-ink-3 hover:text-ink underline underline-offset-2 transition-colors"
-        >
-          Use demo · Maya
-        </button>
-      </header>
-    );
+  function toggleMultiPill(key: 'interests' | 'background', val: string, max: number) {
+    const a = answersRef.current;
+    const arr = [...a[key]];
+    const idx = arr.indexOf(val);
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+    } else if (arr.length < max) {
+      arr.push(val);
+    }
+    const next = { ...a, [key]: arr };
+    setAnswers(next);
+    if (key === 'interests') {
+      setInterestsHint(`${arr.length}/3 selected.`);
+    }
   }
 
-  // ---- Choice button ----
-  function ChoiceBtn({
-    label, active, onClick,
-  }: { label: string; active: boolean; onClick: () => void }) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={[
-          'w-full text-left px-4 py-3 rounded-md border text-body transition-colors mb-2',
-          active
-            ? 'bg-ucla-blue text-cream border-ucla-blue'
-            : 'border-line text-ink hover:border-ucla-blue hover:bg-paper-2',
-        ].join(' ')}
-      >
-        {label}
-      </button>
-    );
+  function setSinglePill(key: 'year' | 'majorStatus', val: string) {
+    const next = { ...answersRef.current, [key]: val };
+    setAnswers(next);
   }
 
-  // ---- Slides ----
-  function renderSlide() {
-    switch (step) {
+  // Next button label
+  let nextLabel = 'next';
+  if (isLast) nextLabel = 'build my plan';
+  else if (isFirst) nextLabel = 'begin';
+
+  const nextIsPrimary = isFirst || isLast;
+  const canNext = validate(pageIdx);
+
+  function renderPage() {
+    const a = answers;
+    switch (currentPageId) {
       case 'welcome':
         return (
-          <div className="max-w-2xl mx-auto text-center py-12">
-            <div className="text-tiny uppercase tracking-wider text-ink-3 mb-3">Pathway · UCLA</div>
-            <h1 className="text-display font-bold text-ink mb-4 leading-tight">
-              The mentor who&rsquo;s been at UCLA for ten years.
-              <br />
-              <span className="text-ink-3 font-semibold">On demand. With citations.</span>
-            </h1>
-            <p className="text-body text-ink-2 mb-8 max-w-md mx-auto">
-              A few quick questions. Then we&rsquo;ll sketch your next two years as a tree you can walk through, branching on what feels right to you.
-              <br />
-              <span className="text-ink-3">Nothing leaves your device. No account.</span>
-            </p>
-            <button
-              type="button"
-              onClick={goNext}
-              className="bg-ucla-blue text-cream px-8 py-3 rounded-md text-body font-semibold hover:bg-ucla-darkblue transition-colors"
-            >
-              Let&rsquo;s start &rarr;
-            </button>
+          <div className={`${styles.pageBody} ${styles.pageBodySingle}`}>
+            <div>
+              <div className={styles.qKicker}>a working notebook · intro</div>
+              <h1 className={styles.qTitle}>
+                Let&rsquo;s figure out<br />your pathway.
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={460} seed={1} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody} style={{ marginTop: 22, maxWidth: 600 }}>
+                <p style={{ fontFamily: "'Caveat', cursive", fontSize: 28, color: 'var(--ink-navy)', lineHeight: 1.2 }}>
+                  Seven quick questions.<br />Then we build your plan.
+                </p>
+                <p style={{ marginTop: 20 }}>
+                  I&rsquo;ll turn your answers into a 5-stage plan — direction, community, signal, summer, year-2 capstone. Everything lives in this notebook.
+                </p>
+                <p style={{ marginTop: 18, color: 'var(--ink-muted)', fontStyle: 'italic' }}>
+                  no login. no email. answers save to this device.
+                </p>
+              </div>
+              <div className={styles.welcomeStamp}>draft · v1</div>
+            </div>
+          </div>
+        );
+
+      case 'name':
+        return (
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>01 · quick intro</div>
+              <h1 className={styles.qTitle}>
+                What should<br />I call you?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={380} seed={2} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>A first name is fine. It&rsquo;ll show up in the marginalia on your plan.</p>
+              </div>
+            </div>
+            <div>
+              <div className={styles.aKicker}>your name →</div>
+              <div className={styles.aArea}>
+                <input
+                  ref={nameInputRef}
+                  className={styles.inkInput}
+                  type="text"
+                  placeholder="e.g. Maya"
+                  value={a.name}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setAnswers({ ...answersRef.current, name: e.target.value.trim() })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      tryAdvance();
+                    }
+                  }}
+                />
+                <div className={styles.fieldHint}>stored on this device only.</div>
+              </div>
+            </div>
           </div>
         );
 
       case 'year':
         return (
-          <SlideShell qnum={1} total={8} question="What year are you?" sub="This helps us calibrate timing and eligibility.">
-            {YEAR_OPTIONS.map((opt) => (
-              <ChoiceBtn
-                key={opt.value}
-                label={opt.label}
-                active={year === opt.value}
-                onClick={() => {
-                  setYear(opt.value);
-                  autoAdvance();
-                }}
-              />
-            ))}
-          </SlideShell>
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>02 · where are you</div>
+              <h1 className={styles.qTitle}>
+                What year<br />are you?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={320} seed={3} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>Changes what stages are live — freshmen see the year-2 capstone, seniors get a shorter runway.</p>
+              </div>
+            </div>
+            <div>
+              <div className={styles.aKicker}>pick one →</div>
+              <div className={styles.aArea}>
+                <div className={styles.pillGroup}>
+                  {YEARS.map((y) => (
+                    <button
+                      key={y}
+                      className={`${styles.pill}${a.year === y ? ' ' + styles.isSelected : ''}`}
+                      onClick={() => setSinglePill('year', y)}
+                    >
+                      {y}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         );
 
       case 'major':
         return (
-          <SlideShell qnum={2} total={8} question="What's your major (or area of interest)?" sub="Type anything — we'll map it.">
-            <input
-              type="text"
-              value={majorText}
-              onChange={(e) => setMajorText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && majorText.trim()) goNext(); }}
-              placeholder="e.g. Computer Science, Biology, History..."
-              className="w-full px-4 py-3 rounded-md border border-line bg-cream text-ink text-body placeholder:text-ink-4 focus:outline-none focus:border-ucla-blue"
-              autoFocus
-            />
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={!majorText.trim()}
-              className="mt-4 bg-ucla-blue text-cream px-6 py-2.5 rounded-md text-body font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              Next &rarr;
-            </button>
-          </SlideShell>
-        );
-
-      case 'hours':
-        return (
-          <SlideShell qnum={3} total={8} question="How many hours per week can you commit?" sub="Be honest — we'll suggest things you can actually do.">
-            <div className="mb-4">
-              <span className="text-display font-bold text-ucla-blue">{hours}</span>
-              <span className="text-body text-ink-3 ml-1">hrs / week</span>
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>03 · direction</div>
+              <h1 className={styles.qTitle}>
+                Major status?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={340} seed={4} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>Decides whether Stage 1 on your plan is &ldquo;declare&rdquo; vs. &ldquo;explore.&rdquo; Be honest — you can change this later.</p>
+              </div>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={40}
-              step={1}
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value))}
-              className="w-full accent-ucla-blue"
-            />
-            <div className="flex justify-between text-meta text-ink-4 mt-1">
-              <span>0</span>
-              <span>40</span>
+            <div>
+              <div className={styles.aKicker}>pick one →</div>
+              <div className={styles.aArea}>
+                <div className={styles.pillGroup}>
+                  {MAJORS.map((m) => (
+                    <button
+                      key={m}
+                      className={`${styles.pill}${a.majorStatus === m ? ' ' + styles.isSelected : ''}`}
+                      onClick={() => setSinglePill('majorStatus', m)}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={goNext}
-              className="mt-6 bg-ucla-blue text-cream px-6 py-2.5 rounded-md text-body font-semibold hover:opacity-90 transition-opacity"
-            >
-              Next &rarr;
-            </button>
-          </SlideShell>
-        );
-
-      case 'aid':
-        return (
-          <SlideShell qnum={4} total={8} question="What's your financial aid situation?" sub="Helps surface paid opportunities and scholarships.">
-            {AID_OPTIONS.map((opt) => (
-              <ChoiceBtn
-                key={opt.label}
-                label={opt.label}
-                active={aidLabel === opt.label}
-                onClick={() => {
-                  setAidLabel(opt.label);
-                  setAid(opt.value);
-                  autoAdvance();
-                }}
-              />
-            ))}
-          </SlideShell>
-        );
-
-      case 'firstgen':
-        return (
-          <SlideShell qnum={5} total={8} question="Are you a first-generation college student?" sub="First-gen students often qualify for special programs and support.">
-            {[
-              { label: 'Yes', value: true as boolean | 'pns' },
-              { label: 'No', value: false as boolean | 'pns' },
-              { label: 'Prefer not to say', value: 'pns' as boolean | 'pns' },
-            ].map((opt) => (
-              <ChoiceBtn
-                key={opt.label}
-                label={opt.label}
-                active={firstGen === opt.value}
-                onClick={() => {
-                  setFirstGen(opt.value);
-                  autoAdvance();
-                }}
-              />
-            ))}
-          </SlideShell>
+          </div>
         );
 
       case 'interests':
         return (
-          <SlideShell qnum={6} total={8} question="What are your interests?" sub="Pick up to 3 that resonate most.">
-            <div className="flex flex-wrap gap-2 mb-4">
-              {INTEREST_OPTIONS.map((opt) => {
-                const active = interests.includes(opt);
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => {
-                      if (active) {
-                        setInterests(interests.filter((i) => i !== opt));
-                      } else if (interests.length < 3) {
-                        setInterests([...interests, opt]);
-                      }
-                    }}
-                    className={[
-                      'px-3 py-1.5 rounded-md border text-body transition-colors',
-                      active
-                        ? 'bg-ucla-blue text-cream border-ucla-blue'
-                        : 'border-line text-ink hover:border-ucla-blue',
-                    ].join(' ')}
-                  >
-                    {opt}
-                  </button>
-                );
-              })}
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>04 · what pulls you</div>
+              <h1 className={`${styles.qTitle} ${styles.qTitleSm}`}>
+                Which of these<br />sound like you?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={400} seed={5} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>Pick <strong>up to 3</strong>. These drive which clubs, labs, and summer options surface on your plan.</p>
+              </div>
             </div>
-            <p className="text-meta text-ink-4 mb-4">{interests.length}/3 selected</p>
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={interests.length === 0}
-              className="bg-ucla-blue text-cream px-6 py-2.5 rounded-md text-body font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-            >
-              Next &rarr;
-            </button>
-          </SlideShell>
+            <div>
+              <div className={styles.aKicker}>select up to 3 →</div>
+              <div className={styles.aArea}>
+                <div className={styles.pillGroup}>
+                  {INTERESTS.map((x) => (
+                    <button
+                      key={x}
+                      className={`${styles.pill}${a.interests.includes(x) ? ' ' + styles.isSelected : ''}`}
+                      onClick={() => toggleMultiPill('interests', x, 3)}
+                    >
+                      {x}
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.fieldHint}>{interestsHint}</div>
+              </div>
+            </div>
+          </div>
         );
 
-      case 'mode':
+      case 'background':
         return (
-          <SlideShell qnum={7} total={8} question="How do you like to explore?" sub="This shapes whether we give you a clear path or open exploration.">
-            {[
-              { label: 'Directed — I know what I want, show me the steps', value: 'directed' as ModeEnum },
-              { label: 'Discovery — I\'m still figuring it out, surprise me', value: 'discovery' as ModeEnum },
-            ].map((opt) => (
-              <ChoiceBtn
-                key={opt.value}
-                label={opt.label}
-                active={mode === opt.value}
-                onClick={() => {
-                  setMode(opt.value);
-                  autoAdvance();
-                }}
-              />
-            ))}
-          </SlideShell>
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>05 · context</div>
+              <h1 className={`${styles.qTitle} ${styles.qTitleSm}`}>
+                Anything I should<br />factor in?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={400} seed={6} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>Optional. These unlock specific programs — AAP peer learning, first-gen-only grants, transfer orientation, etc.</p>
+              </div>
+            </div>
+            <div>
+              <div className={styles.aKicker}>select any →</div>
+              <div className={styles.aArea}>
+                <div className={styles.pillGroup}>
+                  {BACKGROUND.map((x) => (
+                    <button
+                      key={x}
+                      className={`${styles.pill}${a.background.includes(x) ? ' ' + styles.isSelected : ''}`}
+                      onClick={() => toggleMultiPill('background', x, 99)}
+                    >
+                      {x}
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.fieldHint}>feel free to skip — you can add later.</div>
+              </div>
+            </div>
+          </div>
         );
 
-      case 'goal':
+      case 'hours':
         return (
-          <SlideShell qnum={8} total={8} question="What's your end goal?" sub="Optional but helpful. Describe in your own words.">
-            <GoalSuggestions
-              mode={mode}
-              major={majorText}
-              value={goal}
-              onPick={(v) => setGoal(v)}
-            />
-            <textarea
-              value={goal}
-              onChange={(e) => setGoal(e.target.value.slice(0, 300))}
-              placeholder="e.g. Apply to PhD programs in AI/ML..."
-              rows={4}
-              className="w-full mt-4 px-4 py-3 rounded-md border border-line bg-cream text-ink text-body placeholder:text-ink-4 focus:outline-none focus:border-ucla-blue resize-none"
-            />
-            <div className="flex items-center justify-between mt-1">
-              <span className="text-meta text-ink-4">{goal.length}/300</span>
-              <button
-                type="button"
-                onClick={goNext}
-                className="bg-ucla-blue text-cream px-6 py-2.5 rounded-md text-body font-semibold hover:opacity-90 transition-opacity"
-              >
-                Next &rarr;
-              </button>
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>06 · reality check</div>
+              <h1 className={`${styles.qTitle} ${styles.qTitleSm}`}>
+                Hours per week<br />for extras?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={380} seed={7} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>After classes, studying, job, sleep. What&rsquo;s actually left for clubs, research, and side projects.</p>
+              </div>
             </div>
-          </SlideShell>
+            <div>
+              <div className={styles.aKicker}>drag the slider →</div>
+              <div className={styles.aArea}>
+                <input
+                  className={styles.slider}
+                  id="q-hours"
+                  type="range"
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={a.hoursPerWeek}
+                  onInput={(e) => {
+                    const val = parseInt((e.target as HTMLInputElement).value, 10);
+                    setAnswers({ ...answersRef.current, hoursPerWeek: val });
+                  }}
+                  onChange={() => {}}
+                />
+                <div className={styles.sliderTicks} style={{ maxWidth: 480 }}>
+                  <span>0</span><span>10</span><span>20</span><span>30+</span>
+                </div>
+                <div>
+                  <span className={styles.sliderVal}>{a.hoursPerWeek} hrs / week</span>
+                </div>
+                <div className={styles.fieldHint}>this paces the number of commitments per stage.</div>
+              </div>
+            </div>
+          </div>
         );
 
-      case 'ready': {
-        const firstGenLabel = firstGen === true ? 'Yes' : firstGen === 'pns' ? 'Prefer not to say' : 'No';
-        const aidLabel = aid === 'pell' ? 'Pell grant' : aid === 'work_study' ? 'Work-study' : 'No aid';
+      case 'why':
         return (
-          <div className="max-w-xl mx-auto">
-            <h2 className="text-h1 font-bold text-ink mb-1">Ready to build your pathway?</h2>
-            <p className="text-body text-ink-2 mb-6">Here&rsquo;s what we&rsquo;ve got. Looks right?</p>
-            <div className="bg-cream border border-line rounded-lg p-5 mb-6 space-y-3">
-              <SummaryRow label="Year" value={year ?? ''} />
-              <SummaryRow label="Major" value={majorText} />
-              <SummaryRow label="Hours / week" value={String(hours)} />
-              <SummaryRow label="Aid" value={aidLabel} />
-              <SummaryRow label="First-gen" value={firstGenLabel} />
-              <SummaryRow label="Interests" value={interests.join(', ')} />
-              <SummaryRow label="Mode" value={mode ?? ''} />
-              {goal.trim() && <SummaryRow label="Goal" value={goal.trim()} />}
+          <div className={styles.pageBody}>
+            <div>
+              <div className={styles.qKicker}>07 · freeform</div>
+              <h1 className={`${styles.qTitle} ${styles.qTitleSm}`}>
+                What pulls you<br />to this?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={360} seed={8} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody}>
+                <p>A sentence or two. This shows up in the &ldquo;Why this fits you&rdquo; block on each stage card.</p>
+              </div>
             </div>
-            {submitError && (
-              <p className="text-meta text-urgent mb-4">{submitError}</p>
-            )}
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="w-full bg-ucla-blue text-cream px-6 py-3 rounded-md text-body font-semibold hover:opacity-90 transition-opacity"
-            >
-              Generate my tree &rarr;
-            </button>
-            <button
-              type="button"
-              onClick={goBack}
-              className="w-full mt-2 text-meta text-ink-3 hover:text-ink underline underline-offset-2 transition-colors"
-            >
-              &larr; Go back
-            </button>
+            <div>
+              <div className={styles.aKicker}>a line or two →</div>
+              <div className={styles.aArea}>
+                <textarea
+                  ref={whyTextareaRef}
+                  className={styles.inkTextarea}
+                  rows={5}
+                  placeholder="e.g. ML and making stuff that thinks is what pulls me in."
+                  spellCheck={false}
+                  value={a.why}
+                  onChange={(e) => setAnswers({ ...answersRef.current, why: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'review': {
+        const row = (lbl: string, val: string, goto: string) => (
+          <div className={styles.reviewRow} key={lbl}>
+            <span className={styles.reviewLbl}>{lbl}</span>
+            <span className={styles.reviewVal}>
+              {val ? val : <em>— skipped —</em>}
+            </span>
+            <button className={styles.reviewEdit} onClick={() => goToPageById(goto)}>✎ edit</button>
+          </div>
+        );
+        return (
+          <div className={`${styles.pageBody} ${styles.pageBodySingle}`}>
+            <div>
+              <div className={styles.qKicker}>last look · review</div>
+              <h1 className={`${styles.qTitle} ${styles.qTitleSm}`}>
+                Does this<br />sound like you?
+                <span className={styles.qUl}>
+                  <FreehandUnderline width={400} seed={9} stroke="#c94c3a" strokeWidth={2.4} />
+                </span>
+              </h1>
+              <div className={styles.qBody} style={{ maxWidth: 600 }}>
+                <p>Tap ✎ to hop back and edit anything. When it reads right, hit <strong style={{ color: 'var(--ink-red)' }}>build my plan →</strong>.</p>
+              </div>
+              <div className={styles.reviewList} style={{ marginTop: 28 }}>
+                {row('Name', a.name, 'name')}
+                {row('Year', a.year, 'year')}
+                {row('Major', a.majorStatus, 'major')}
+                {row('Interests', a.interests.length ? a.interests.join(' · ') : '', 'interests')}
+                {row('Context', a.background.length ? a.background.join(' · ') : '', 'background')}
+                {row('Hours', `${a.hoursPerWeek} hrs / week`, 'hours')}
+                {row('Why', a.why, 'why')}
+              </div>
+            </div>
           </div>
         );
       }
@@ -490,21 +567,61 @@ export function Onboarding() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-paper flex flex-col">
-      {renderHeader()}
-      <main className="flex-1 flex items-center justify-center px-6 py-10">
-        {renderSlide()}
-      </main>
-    </div>
-  );
-}
+  const pageClasses = [
+    styles.page,
+    isEntering ? styles.isEntering : '',
+    isLeaving ? styles.isLeaving : '',
+  ].filter(Boolean).join(' ');
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-3 text-body">
-      <span className="text-ink-3 min-w-[110px] shrink-0">{label}</span>
-      <span className="text-ink font-medium">{value}</span>
+    <div className={styles.stage}>
+      <div className={styles.kbdHint}>use <kbd>←</kbd> <kbd>→</kbd> to navigate</div>
+
+      <div className={pageClasses}>
+        {renderPage()}
+      </div>
+
+      <button
+        className={`${styles.corner} ${styles.cornerBack}`}
+        aria-label="back"
+        disabled={isFirst}
+        onClick={tryBack}
+      >
+        <svg className={styles.cornerSvg} viewBox="0 0 64 40">
+          <path
+            d={BACK_ARROW_D}
+            stroke="currentColor"
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+        <span className={styles.cornerLbl}>back</span>
+      </button>
+
+      <button
+        className={`${styles.corner} ${styles.cornerNext}${nextIsPrimary ? ' ' + styles.cornerPrimary : ''}`}
+        aria-label="next"
+        disabled={!canNext}
+        onClick={tryAdvance}
+      >
+        <span className={styles.cornerLbl}>{nextLabel}</span>
+        <svg className={styles.cornerSvg} viewBox="0 0 64 40">
+          <path
+            d={NEXT_ARROW_D}
+            stroke="currentColor"
+            strokeWidth={2.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      </button>
+
+      <div className={styles.stageCounter}>
+        page {pageIdx + 1} of {TOTAL_PAGES}
+      </div>
     </div>
   );
 }
