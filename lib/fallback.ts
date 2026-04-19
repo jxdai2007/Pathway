@@ -1,29 +1,36 @@
-import type { CorpusItem, IntakeProfile, Node } from './schemas';
+import raw from '@/data/ucla/stage_fallbacks.json';
+import type { Node } from '@/lib/schemas';
+import type { StageKey } from '@/lib/stages';
 
-type BuildArgs = { corpus: CorpusItem[]; profile: IntakeProfile; parentId: string };
+type Template = Omit<Node, 'id' | 'parent_id' | 'stage_key' | 'leads_to_tags' | 'opportunity_id' | 'human_contact' | 'outreach_email_draft'> & {
+  human_contact?: Node['human_contact'];
+  outreach_email_draft?: Node['outreach_email_draft'];
+};
 
-export function buildFallbackChildren(args: BuildArgs): Node[] {
-  const advising = args.corpus
-    .filter(c => c.eligibility.includes('all'))
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .slice(0, 3);
+const TEMPLATES = raw as Record<StageKey, Template[]>;
 
-  return advising.map((item) => ({
-    id: `fb-${item.id}-${args.parentId}`,
-    parent_id: args.parentId,
-    opportunity_id: item.id,
-    title: item.title,
-    description: item.upside,
-    why_this: `A safe starting point while you narrow your focus. ${item.upside}`,
-    why_now: `No deadline pressure — walk in this week and get oriented.`,
-    todos: [
-      { text: `Check ${item.contact.name} hours and drop in`, done: false },
-      { text: `Bring 2 questions about your major/path`, done: false },
-    ],
-    source_url: item.source_url,
-    human_contact: item.contact,
-    outreach_email_draft: null,
-    estimated_time_cost: `${item.time_cost_hrs_per_week} hr one-time`,
-    leads_to_tags: item.unlocks_tags,
+export function synthesizeFallback(stage_key: StageKey, parent_id: string | null): Node[] {
+  const arr = TEMPLATES[stage_key];
+  if (!arr || arr.length < 3) {
+    throw new Error(`fallback: missing or insufficient templates for ${stage_key}`);
+  }
+  return arr.slice(0, 3).map((t, i) => ({
+    id: `fb-${stage_key}-${i}`,
+    parent_id,
+    opportunity_id: null,
+    title: t.title,
+    description: t.description,
+    why_this: t.why_this,
+    why_now: t.why_now ?? 'Rolling — start now.',
+    todos: t.todos,
+    source_url: t.source_url ?? null,
+    human_contact: t.human_contact ?? null,
+    outreach_email_draft: t.outreach_email_draft ?? null,
+    estimated_time_cost: t.estimated_time_cost,
+    leads_to_tags: [],
+    stage_key,
+    eyebrow: t.eyebrow,
+    path_tag: t.path_tag,
+    cites: t.cites,
   }));
 }
