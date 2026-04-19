@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Pathway — AI-Branching College Roadmap
 
-## Getting Started
+> Helping first-gen and underserved UCLA students discover the opportunities their parents can't point them toward.
 
-First, run the development server:
+## Quick Start
 
 ```bash
+git clone <this-repo>
+cd claudehackathon
+cp .env.example .env.local
+# Edit .env.local and paste your ANTHROPIC_API_KEY from console.anthropic.com
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires Node 20+.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Problem
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+College has hundreds of fellowships, clubs, research groups, and advising offices. Students whose families have already been through US college get pointed to the right ones by name. First-gen students and those whose families went to school elsewhere don't. Pathway closes that gap.
 
-## Learn More
+## Solution
 
-To learn more about Next.js, take a look at the following resources:
+Branching AI-generated roadmap. Enter your profile + goal (or "help me discover"). Claude proposes 3-4 path directions grounded in a curated UCLA opportunity corpus. Click a direction, Claude generates the next layer of nodes. Each node carries concrete todos, source URL, a real human contact, and a drafted outreach email.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How Claude Is Used
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- At every click, Claude reasons over the student's accumulated path choices, profile, goal, and filtered corpus to propose 2-3 next-best forks.
+- Structured JSON output via `@anthropic-ai/sdk` with prompt caching on the stable system prompt.
+- Server-side semantic validation rejects any node whose `opportunity_id` isn't in the corpus — no hallucinated fellowships.
+- Claude is not a wrapper; it does path-dependent reasoning + warm outreach drafting — things a keyword filter cannot do.
 
-## Deploy on Vercel
+## Ethics & What Could Go Wrong
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Misdirection:** hard eligibility filter runs before Claude; every node cites a source URL.
+- **Hallucination:** schema validator drops any child naming an opportunity not in corpus; deterministic advising-pool fills gaps.
+- **Privacy:** sensitive profile fields (first-gen status, aid status) live in browser memory only. Never persisted, never logged.
+- **Prompt injection:** open-ended `end_goal` input is wrapped in untrusted-input tags with explicit model instruction to ignore instructions within.
+- **Replacing advisors:** every node points to a real human advisor (EOP, AAP, department). Top-level disclaimer that Pathway augments, does not replace, a real advisor.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Demo Personas
+
+- **Maya Chen** (discovery mode): freshman, CS undecided, first-gen, Pell, 8 hrs/wk. Doesn't know if she wants AI/ML or cybersec.
+- **Raj Patel** (directed mode): sophomore CS, goal "PhD AI/ML", wants milestone roadmap.
+
+## Fork Guide (target another school)
+
+Create `data/<school>/opportunities.json` + `data/<school>/first_layer_seeds.json` following the schemas in `lib/schemas.ts`. No code changes required.
+
+## Contributors
+
+SoCal Claude Builder Club Hackathon · UCLA · April 2026
